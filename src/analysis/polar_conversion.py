@@ -1,22 +1,21 @@
 import numpy as np
 
-
 def convert_to_polar(coords, vantage_point):
     """
     Convert 2D coordinates to polar coordinates.
 
     Parameters:
-    - coords: A 2D numpy array with the coordinates to be converted.
-    - vantage_point: A 2D numpy array with the vantage point.
+    - coords: 2D numpy array of coordinates.
+    - vantage_point: 2D numpy array representing the reference point for polar conversion.
 
     Returns:
-    - sorted_r: A numpy array of sorted radial coordinates.
-    - sorted_theta: A numpy array of sorted angular coordinates.
+    - sorted_r: Numpy array of radial coordinates, sorted by angular coordinates.
+    - sorted_theta: Numpy array of angular coordinates, sorted.
     """
     if coords.shape[0] == 0:
         return np.array([]), np.array([])
-    translated_coords = coords - vantage_point
 
+    translated_coords = coords - vantage_point
     r = np.sqrt(translated_coords[:, 0] ** 2 + translated_coords[:, 1] ** 2)
     theta = np.arctan2(translated_coords[:, 1], translated_coords[:, 0])
     theta = np.mod(theta + 2 * np.pi, 2 * np.pi)
@@ -28,17 +27,17 @@ def convert_to_polar(coords, vantage_point):
     return sorted_r, sorted_theta
 
 
-def in_scanning_range(pt_theta, angle, window):
+def in_scanning_range(point_theta, angle, window):
     """
-    Check if a point is in the scanning window.
+    Check if an angular coordinate is within a scanning range.
 
     Parameters:
-    - pt_theta: The angle of the point in radians.
+    - point_theta: The angle of the point in radians.
     - angle: The angle of the scanning window in radians.
-    - window: The scanning window size in radians.
+    - window: The size of the scanning window in radians.
 
     Returns:
-    - True if the point is in the scanning window, False otherwise.
+    - True if the point is within the scanning range, False otherwise.
     """
-    angular_difference = np.abs((pt_theta - angle + np.pi) % (2 * np.pi) - np.pi)
+    angular_difference = np.abs((point_theta - angle + np.pi) % (2 * np.pi) - np.pi)
     return angular_difference <= window / 2

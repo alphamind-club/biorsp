@@ -1,36 +1,29 @@
 import numpy as np
 
-
 def compute_histogram(projection, resolution, angle, window):
     """
-    Compute the histogram of a projection.
+    Compute a histogram of a projection based on a scanning window.
 
     Parameters:
-    - projection: A numpy array of angles in radians.
-    - resolution: The number of bins in the histogram.
+    - projection: Numpy array of angles in radians.
+    - resolution: Number of bins in the histogram.
     - angle: The angle of the scanning window in radians.
     - window: The scanning window size in radians.
 
     Returns:
-    - A numpy array of the histogram.
+    - A numpy array representing the histogram of the projection.
     """
     start_angle = (angle - window / 2) % (2 * np.pi)
     end_angle = (angle + window / 2) % (2 * np.pi)
     bin_edges = np.linspace(0, window, resolution + 1)
 
     if start_angle > end_angle:
-        # Scanning window crosses the 2*pi boundary
-        # Adjust angles by subtracting start_angle and wrapping around
+        # Handle case where scanning window crosses 2*pi boundary
         adjusted_projection = (projection - start_angle) % (2 * np.pi)
-        # Keep only the points within the window (0 to window)
         adjusted_projection = adjusted_projection[adjusted_projection <= window]
     else:
-        # Scanning window does not cross boundary
-        # Keep only points within the scanning window
-        adjusted_projection = projection[
-            (projection >= start_angle) & (projection <= end_angle)
-        ]
-        # Adjust angles to start from 0
+        # Adjust for projections within the scanning window
+        adjusted_projection = projection[(projection >= start_angle) & (projection <= end_angle)]
         adjusted_projection = adjusted_projection - start_angle
 
     histogram, _ = np.histogram(adjusted_projection, bins=bin_edges)
@@ -42,10 +35,10 @@ def compute_cdf(histogram):
     Compute the cumulative distribution function (CDF) of a histogram.
 
     Parameters:
-    - histogram: A numpy array of the histogram.
+    - histogram: Numpy array of histogram values.
 
     Returns:
-    - A numpy array of the CDF.
+    - Numpy array representing the CDF.
     """
     total = np.sum(histogram)
     if total > 0:
