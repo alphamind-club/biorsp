@@ -1,61 +1,15 @@
 import numpy as np
 from src.analysis.polar_conversion import convert_to_polar, in_scanning_range
-from src.analysis.histogram import compute_histogram, compute_cdf
-
-
-def compute_cdfs(
-    fg_projection, bg_projection, angle, scanning_window, resolution, mode
-):
-    """
-    Compute the CDFs of the foreground and background projections.
-
-    Parameters:
-    - fg_projection: Numpy array of foreground angles in radians.
-    - bg_projection: Numpy array of background angles in radians.
-    - angle: Angle of the scanning window in radians.
-    - scanning_window: Size of the scanning window in radians.
-    - resolution: Number of bins for the histogram.
-    - mode: Mode for scaling CDFs.
-
-    Returns:
-    - fg_cdf: Numpy array of foreground CDF.
-    - bg_cdf: Numpy array of background CDF.
-    """
-    fg_histogram = compute_histogram(fg_projection, resolution, angle, scanning_window)
-    bg_histogram = compute_histogram(bg_projection, resolution, angle, scanning_window)
-
-    fg_cdf = compute_cdf(fg_histogram)
-    bg_cdf = compute_cdf(bg_histogram)
-
-    if mode == "absolute":
-        bg_total = np.sum(bg_histogram)
-        fg_total = np.sum(fg_histogram)
-        if bg_total > 0:
-            scaling_factor = fg_total / bg_total
-            fg_cdf *= scaling_factor
-
-    return fg_cdf, bg_cdf
-
-
-def compute_area(fg_cdf, bg_cdf, window):
-    """
-    Compute the area under the absolute difference between foreground and background CDFs.
-
-    Parameters:
-    - fg_cdf: Numpy array of foreground CDF.
-    - bg_cdf: Numpy array of background CDF.
-    - window: Size of the scanning window in radians.
-
-    Returns:
-    - The area under the absolute difference between the CDFs.
-    """
-    dx = window / fg_cdf.shape[0]
-    return np.trapz(np.abs(bg_cdf - fg_cdf), dx=dx)
-
+from src.analysis.cdf_calculations import compute_cdfs, compute_area
 
 def calculate_differences(
-    foreground_points, background_points, scanning_window, resolution, 
-    vantage_point, angle_range, mode
+    foreground_points, 
+    background_points, 
+    scanning_window, 
+    resolution, 
+    vantage_point, 
+    angle_range, 
+    mode
 ):
     """
     Calculate the differences between foreground and background CDFs.
@@ -67,10 +21,10 @@ def calculate_differences(
     - resolution: Number of bins for the histogram.
     - vantage_point: 2D numpy array for the vantage point.
     - angle_range: Angular range for CDF computation.
-    - mode: Mode for scaling the foreground and background CDFs.
+    - mode: Mode for scaling foreground and background CDFs.
 
     Returns:
-    - differences: Numpy array of differences between the foreground and background CDFs.
+    - differences: Numpy array of differences between foreground and background CDFs.
     """
     _, fg_theta = convert_to_polar(foreground_points, vantage_point)
     _, bg_theta = convert_to_polar(background_points, vantage_point)
@@ -92,58 +46,34 @@ def calculate_differences(
 
     return differences
 
-
-def calculate_rsp_area(
-    foreground_points, background_points, vantage_point, 
-    scanning_window=np.pi, resolution=1000, angle_range=np.array([0, 2 * np.pi]), mode="absolute"
-):
+def calculate_rsp_area(differences, angle_range, resolution):
     """
-    Calculate the RSP area and RMSD.
+    Calculate the RSP area from the differences.
 
     Parameters:
-    - foreground_points: Numpy array of (x, y) coordinates for foreground cells.
-    - background_points: Numpy array of (x, y) coordinates for background cells.
-    - vantage_point: 2D numpy array for the vantage point.
-    - scanning_window: Size of the scanning window in radians.
-    - resolution: Number of bins for the histogram.
-    - angle_range: Angular range for the CDF computation.
-    - mode: Mode for scaling the foreground and background CDFs.
+    - differences: Numpy array of differences between foreground and background CDFs.
+    - angle_range: The range of angles over which the differences are calculated.
+    - resolution: The number of bins in the histogram.
 
     Returns:
-    - rsp_area: Calculated RSP area.
-    - differences: Numpy array of differences between foreground and background CDFs.
-    - rmsd: Root Mean Square Deviation.
+    - rsp_area: The calculated RSP area.
     """
-    differences = calculate_differences(
-        foreground_points, background_points, scanning_window, 
-        resolution, vantage_point, angle_range, mode
-    )
-
     delta_theta = (angle_range[1] - angle_range[0]) / resolution
     segment_areas = 0.5 * delta_theta * np.power(differences, 2)
     rsp_area = np.sum(segment_areas)
+    
+    return rsp_area
 
-    rmsd = np.sqrt(np.mean(np.square(differences)))
-    return rsp_area, differences, rmsd
-
-
-def calculate_deviation_score(rsp_area, differences, resolution, angle_range):
+def calculate_rmsd(differences):
     """
-    Calculate the deviation score based on the RSP area.
+    Calculate the Root Mean Square Deviation (RMSD) from the differences.
 
     Parameters:
-    - rsp_area: The calculated RSP area.
-    - differences: Numpy array of differences between the foreground and background CDFs.
-    - resolution: The resolution for the calculation.
-    - angle_range: Angular range over which the radar scans.
+    - differences: Numpy array of differences between foreground and background CDFs.
 
     Returns:
-    - deviation_score: The calculated deviation score.
+    - rmsd: The calculated RMSD.
     """
-    radius = np.sqrt(rsp_area / np.pi)
-    delta_theta = (angle_range[1] - angle_range[0]) / resolution
-
-    intersection_area = np.sum(np.minimum(differences, radius)) * delta_theta
-    if rsp_area != 0:
-        return intersection_area / rsp_area
-    return 0  # Handle case where rsp_area is 0
+    rmsd = np.sqrt(np.mean(np.square(differences)))
+    
+    return rmsd
