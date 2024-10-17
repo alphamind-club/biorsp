@@ -1,5 +1,6 @@
 import numpy as np
 
+
 def convert_to_polar(coords, vantage_point):
     """
     Convert 2D coordinates to polar coordinates.
@@ -21,10 +22,7 @@ def convert_to_polar(coords, vantage_point):
     theta = np.mod(theta + 2 * np.pi, 2 * np.pi)
 
     sorted_indices = np.argsort(theta)
-    sorted_r = r[sorted_indices]
-    sorted_theta = theta[sorted_indices]
-
-    return sorted_r, sorted_theta
+    return r[sorted_indices], theta[sorted_indices]
 
 
 def in_scanning_range(point_theta, angle, window):

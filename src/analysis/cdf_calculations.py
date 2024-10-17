@@ -54,8 +54,13 @@ def compute_area(fg_cdf, bg_cdf, window):
 
 
 def calculate_differences(
-    foreground_points, background_points, scanning_window, resolution, 
-    vantage_point, angle_range, mode
+    foreground_points,
+    background_points,
+    scanning_window,
+    resolution,
+    vantage_point,
+    angle_range,
+    mode,
 ):
     """
     Calculate the differences between foreground and background CDFs.

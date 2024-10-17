@@ -1,5 +1,6 @@
 import numpy as np
 
+
 def compute_histogram(projection, resolution, angle, window):
     """
     Compute a histogram of a projection based on a scanning window.
@@ -18,13 +19,13 @@ def compute_histogram(projection, resolution, angle, window):
     bin_edges = np.linspace(0, window, resolution + 1)
 
     if start_angle > end_angle:
-        # Handle case where scanning window crosses 2*pi boundary
         adjusted_projection = (projection - start_angle) % (2 * np.pi)
         adjusted_projection = adjusted_projection[adjusted_projection <= window]
     else:
-        # Adjust for projections within the scanning window
-        adjusted_projection = projection[(projection >= start_angle) & (projection <= end_angle)]
-        adjusted_projection = adjusted_projection - start_angle
+        adjusted_projection = projection[
+            (projection >= start_angle) & (projection <= end_angle)
+        ]
+        adjusted_projection -= start_angle
 
     histogram, _ = np.histogram(adjusted_projection, bins=bin_edges)
     return histogram

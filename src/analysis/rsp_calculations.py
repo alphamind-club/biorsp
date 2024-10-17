@@ -2,14 +2,15 @@ import numpy as np
 from src.analysis.polar_conversion import convert_to_polar, in_scanning_range
 from src.analysis.cdf_calculations import compute_cdfs, compute_area
 
+
 def calculate_differences(
-    foreground_points, 
-    background_points, 
-    scanning_window, 
-    resolution, 
-    vantage_point, 
-    angle_range, 
-    mode
+    foreground_points,
+    background_points,
+    scanning_window,
+    resolution,
+    vantage_point,
+    angle_range,
+    mode,
 ):
     """
     Calculate the differences between foreground and background CDFs.
@@ -46,6 +47,7 @@ def calculate_differences(
 
     return differences
 
+
 def calculate_rsp_area(differences, angle_range, resolution):
     """
     Calculate the RSP area from the differences.
@@ -61,8 +63,9 @@ def calculate_rsp_area(differences, angle_range, resolution):
     delta_theta = (angle_range[1] - angle_range[0]) / resolution
     segment_areas = 0.5 * delta_theta * np.power(differences, 2)
     rsp_area = np.sum(segment_areas)
-    
+
     return rsp_area
+
 
 def calculate_rmsd(differences):
     """
@@ -75,5 +78,27 @@ def calculate_rmsd(differences):
     - rmsd: The calculated RMSD.
     """
     rmsd = np.sqrt(np.mean(np.square(differences)))
-    
+
     return rmsd
+
+
+def calculate_deviation_score(rsp_area, differences, resolution, angle_range):
+    """
+    Calculate the deviation score based on the RSP area.
+
+    Parameters:
+    - rsp_area: The calculated RSP area.
+    - differences: Numpy array of differences between the foreground and background CDFs.
+    - resolution: The resolution for the calculation.
+    - angle_range: Angular range over which the radar scans.
+
+    Returns:
+    - deviation_score: The calculated deviation score.
+    """
+    radius = np.sqrt(rsp_area / np.pi)
+    delta_theta = (angle_range[1] - angle_range[0]) / resolution
+
+    intersection_area = np.sum(np.minimum(differences, radius)) * delta_theta
+    if rsp_area != 0:
+        return intersection_area / rsp_area
+    return 0  # Handle case where rsp_area is 0

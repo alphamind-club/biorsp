@@ -1,19 +1,20 @@
 import numpy as np
-from src.analysis.cdf_calculations import (
+from src.analysis.rsp_calculations import (
     calculate_deviation_score,
     calculate_rsp_area,
     calculate_differences,
     calculate_rmsd,
 )
 
-def rsp(
-    foreground_points, 
-    background_points, 
-    vantage_point, 
-    scanning_window=np.pi, 
-    resolution=1000, 
-    angle_range=np.array([0, 2 * np.pi]), 
-    mode="absolute"
+
+def perform_rsp_analysis(
+    foreground_points,
+    background_points,
+    vantage_point,
+    scanning_window=np.pi,
+    resolution=1000,
+    angle_range=np.array([0, 2 * np.pi]),
+    mode="absolute",
 ):
     """
     Perform full RSP analysis including RSP area, RMSD, and deviation score.
@@ -25,7 +26,7 @@ def rsp(
     - scanning_window: Scanning window size in radians.
     - resolution: Number of bins for the histogram.
     - angle_range: Angular range for CDF computation.
-    - mode: Mode for scaling foreground and background CDFs.
+    - mode: Mode for scaling foreground and background CDFs (default="absolute").
 
     Returns:
     - rsp_area: Calculated RSP area.
@@ -45,6 +46,8 @@ def rsp(
 
     rsp_area = calculate_rsp_area(differences, angle_range, resolution)
     rmsd = calculate_rmsd(differences)
-    deviation_score = calculate_deviation_score(rsp_area, differences, resolution, angle_range)
+    deviation_score = calculate_deviation_score(
+        rsp_area, differences, resolution, angle_range
+    )
 
     return rsp_area, rmsd, deviation_score, differences
