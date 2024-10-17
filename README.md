@@ -13,17 +13,7 @@ This comprehensive approach improves the detection of cellular heterogeneity and
 
 Currently, BioRSP is available as a working package in this repository. You can download the latest stable version from the [GitHub release page](https://github.com/cytronicoder/biorsp/releases). More information about installing bioRSP will be provided in the future.
 
-In the future, we plan to release BioRSP as a standalone package on PyPI for easier installation. If you have any suggestions or feedback, please [open an issue](https://github.com/cytronicoder/biorsp/issues).
-
-## Basic Usage
-
-TODO
-
-## Changelog
-
-For the sake of convenience, we have provided a [changelog](https://github.com/cytronicoder/biorsp/blob/master/CHANGELOG.md) in the repository. This file documents all changes made to BioRSP, including bug fixes, new features, and other updates.
-
-As this project is still in its infancy, we encourage you to check the changelog regularly to stay up-to-date with the latest developments. If you have any questions or concerns, please feel free to [open an issue](https://github.com/cytronicoder/biorsp/issues).
+In the future, we plan to release BioRSP as a standalone package on PyPI for easier installation. As this project is still in its infancy, if you have any suggestions or feedback, please [open an issue](https://github.com/cytronicoder/biorsp/issues).
 
 ## Citation
 
