@@ -34,52 +34,57 @@ def test_rsp():
     - Generates smooth differences and rsp_area.
     - Verifies the creation and saving of polar and comparison plots.
     """
-    # Generate sample data for testing
     num_points = 1000
     differences = generate_smooth_differences(num_points, max_diff=0.05)
     print(f"Generated differences array with shape: {differences.shape}")
 
-    # Define file paths for saving plots
     save_path_polar = "test_rsp_polar.png"
     save_path_comparison = "test_rsp_comparison.png"
 
-    # Test polar plot without saving
     try:
         plot_rsp_polar(differences, show_plot=False)
         print("Polar plot without saving succeeded.")
-    except Exception as e:
-        print(f"Polar plot without saving failed: {e}")
+    except ValueError as e:
+        print(f"ValueError during polar plot without saving: {e}")
+        return
+    except TypeError as e:
+        print(f"TypeError during polar plot without saving: {e}")
         return
 
-    # Test polar plot with saving
     try:
         plot_rsp_polar(differences, save_path=save_path_polar, show_plot=False)
         assert os.path.exists(
             save_path_polar
         ), f"Polar plot image was not saved at {save_path_polar}."
         print(f"Polar plot image successfully saved at {save_path_polar}.")
-    except Exception as e:
-        print(f"Polar plot with saving failed: {e}")
+    except ValueError as e:
+        print(f"ValueError during polar plot with saving: {e}")
+        return
+    except OSError as e:
+        print(f"OSError during saving polar plot: {e}")
         return
     finally:
-        # Clean up: remove the generated plot image
         if os.path.exists(save_path_polar):
-            os.remove(save_path_polar)
-            print(f"Cleaned up: removed {save_path_polar}.")
+            try:
+                os.remove(save_path_polar)
+                print(f"Cleaned up: removed {save_path_polar}.")
+            except OSError as e:
+                print(f"OSError during cleanup of {save_path_polar}: {e}")
 
-    # Test comparison plot without saving
-    rsp_area = calculate_rsp_area(
-        differences, angle_range=[0, 2 * np.pi], resolution=1000
-    )
-    print(f"Using RSP area: {rsp_area}")
     try:
+        rsp_area = calculate_rsp_area(
+            differences, angle_range=[0, 2 * np.pi], resolution=1000
+        )
+        print(f"Using RSP area: {rsp_area}")
         plot_rsp_comparison(rsp_area, differences, show_plot=False)
         print("Comparison plot without saving succeeded.")
-    except Exception as e:
-        print(f"Comparison plot without saving failed: {e}")
+    except ValueError as e:
+        print(f"ValueError during comparison plot without saving: {e}")
+        return
+    except TypeError as e:
+        print(f"TypeError during comparison plot without saving: {e}")
         return
 
-    # Test comparison plot with saving
     try:
         plot_rsp_comparison(
             rsp_area, differences, save_path=save_path_comparison, show_plot=False
@@ -88,14 +93,19 @@ def test_rsp():
             save_path_comparison
         ), f"Comparison plot image was not saved at {save_path_comparison}."
         print(f"Comparison plot image successfully saved at {save_path_comparison}.")
-    except Exception as e:
-        print(f"Comparison plot with saving failed: {e}")
+    except ValueError as e:
+        print(f"ValueError during comparison plot with saving: {e}")
+        return
+    except OSError as e:
+        print(f"OSError during saving comparison plot: {e}")
         return
     finally:
-        # Clean up: remove the generated plot image
         if os.path.exists(save_path_comparison):
-            os.remove(save_path_comparison)
-            print(f"Cleaned up: removed {save_path_comparison}.")
+            try:
+                os.remove(save_path_comparison)
+                print(f"Cleaned up: removed {save_path_comparison}.")
+            except OSError as e:
+                print(f"OSError during cleanup of {save_path_comparison}: {e}")
 
     print("All RSP plotting tests passed successfully.")
 
