@@ -17,12 +17,10 @@ def generate_smooth_differences(num_points, max_diff=0.05):
     - A numpy array of smooth differences.
     """
     differences = np.zeros(num_points)
-    differences[0] = np.random.rand()  # Start with a random value between 0 and 1
+    differences[0] = np.random.rand()
 
     for i in range(1, num_points):
-        # Generate the next value, ensuring the difference is at most `max_diff`
         next_value = differences[i - 1] + np.random.uniform(-max_diff, max_diff)
-        # Ensure that values stay within the range [0, 1]
         differences[i] = np.clip(next_value, 0, 1)
 
     return differences
