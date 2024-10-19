@@ -2,7 +2,7 @@ import pandas as pd
 from sklearn.cluster import DBSCAN
 
 
-def run_dbscan(tsne_results, eps=4, min_samples=50, save_path=None):
+def compute_dbscan(tsne_results, eps=4, min_samples=50, save_path=None):
     """
     Run DBSCAN on the t-SNE results.
 

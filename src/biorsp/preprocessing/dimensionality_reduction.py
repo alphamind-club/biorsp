@@ -3,12 +3,15 @@ from sklearn.manifold import TSNE
 from umap import UMAP
 
 
-def run_tsne(dge_matrix_filtered, random_state=42, perplexity=30, save_path=None):
+def compute_tsne(
+    dge_matrix_filtered, n_components=2, random_state=42, perplexity=30, save_path=None
+):
     """
     Run t-SNE on the filtered data.
 
     Parameters:
     - dge_matrix_filtered: A dataframe containing the filtered data.
+    - n_components: The number of components for t-SNE.
     - random_state: The random state for reproducibility.
     - perplexity: The perplexity parameter for t-SNE.
     - save_path: Path to save the t-SNE results.
@@ -17,7 +20,10 @@ def run_tsne(dge_matrix_filtered, random_state=42, perplexity=30, save_path=None
     - tsne_results: A 2D numpy array with the t-SNE (or UMAP) coordinates for each cell.
     """
     tsne = TSNE(
-        n_components=2, perplexity=perplexity, random_state=random_state, max_iter=1000
+        n_components=n_components,
+        perplexity=perplexity,
+        random_state=random_state,
+        max_iter=1000,
     )
     tsne_results = tsne.fit_transform(dge_matrix_filtered.T)
 
