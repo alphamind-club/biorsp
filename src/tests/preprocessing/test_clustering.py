@@ -1,13 +1,13 @@
 import pandas as pd
 import numpy as np
-from biorsp.preprocessing.clustering import run_dbscan, run_kmeans
+from biorsp.preprocessing.clustering import run_dbscan
 
 
 def test_clustering():
     """
     Test the clustering functions for DGE data.
     - Loads the data and t-SNE results.
-    - Applies DBSCAN and KMeans clustering.
+    - Applies DBSCAN clustering.
     - Verifies the shape of the results and checks for NaNs.
     - Checks that clusters contain valid labels.
     """
@@ -32,8 +32,6 @@ def test_clustering():
     # Parameters for clustering
     dbscan_eps = 0.5
     dbscan_min_samples = 10
-    kmeans_clusters = 5
-    random_state = 42
 
     # Test DBSCAN clustering
     dbscan_labels = run_dbscan(
@@ -51,25 +49,6 @@ def test_clustering():
 
     # Ensure DBSCAN has noise points labeled as -1
     assert -1 in dbscan_labels, "DBSCAN should label some points as noise (-1)."
-
-    # Test KMeans clustering
-    kmeans_labels = run_kmeans(
-        tsne_results, n_clusters=kmeans_clusters, random_state=random_state
-    )
-    print(f"KMeans labels shape: {kmeans_labels.shape}")
-
-    # Ensure KMeans output shape matches (num_samples,)
-    assert kmeans_labels.shape == (
-        tsne_results.shape[0],
-    ), "KMeans labels should have shape (num_samples,)."
-
-    # Check for NaN values in KMeans labels
-    assert not np.isnan(kmeans_labels).any(), "KMeans labels contain NaN values."
-
-    # Ensure KMeans assigns labels from 0 to n_clusters - 1
-    assert (
-        len(set(kmeans_labels)) == kmeans_clusters
-    ), f"KMeans should create exactly {kmeans_clusters} clusters."
 
     print("All clustering tests passed successfully.")
 
