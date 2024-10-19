@@ -1,6 +1,6 @@
 import pandas as pd
 import numpy as np
-from biorsp.preprocessing.dimensionality_reduction import run_tsne, run_umap
+from biorsp.preprocessing.dimensionality_reduction import compute_tsne, run_umap
 
 
 def test_dimensionality_reduction():
@@ -22,7 +22,7 @@ def test_dimensionality_reduction():
     umap_neighbors = 15
     umap_min_dist = 0.1
 
-    tsne_results = run_tsne(
+    tsne_results = compute_tsne(
         dge_matrix, random_state=random_state, perplexity=tsne_perplexity
     )
     print(f"t-SNE results shape: {tsne_results.shape}")

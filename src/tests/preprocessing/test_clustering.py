@@ -1,6 +1,6 @@
 import pandas as pd
 import numpy as np
-from biorsp.preprocessing.clustering import run_dbscan
+from biorsp.preprocessing.clustering import compute_dbscan
 
 
 def test_clustering():
@@ -30,7 +30,7 @@ def test_clustering():
     dbscan_eps = 0.5
     dbscan_min_samples = 10
 
-    dbscan_labels = run_dbscan(
+    dbscan_labels = compute_dbscan(
         tsne_results, eps=dbscan_eps, min_samples=dbscan_min_samples
     )
     print(f"DBSCAN labels shape: {dbscan_labels.shape}")
