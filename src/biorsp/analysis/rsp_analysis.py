@@ -1,5 +1,5 @@
 import numpy as np
-from src.analysis.rsp_calculations import (
+from biorsp.analysis.rsp_calculations import (
     calculate_deviation_score,
     calculate_rsp_area,
     calculate_differences,

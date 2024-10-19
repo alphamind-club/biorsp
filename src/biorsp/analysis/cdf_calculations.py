@@ -1,6 +1,6 @@
 import numpy as np
-from src.analysis.polar_conversion import convert_to_polar, in_scanning_range
-from src.analysis.histogram import compute_histogram, compute_cdf
+from biorsp.analysis.polar_conversion import convert_to_polar, in_scanning_range
+from biorsp.analysis.histogram import compute_histogram, compute_cdf
 
 
 def compute_cdfs(

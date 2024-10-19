@@ -1,6 +1,6 @@
 import numpy as np
-from src.analysis.polar_conversion import convert_to_polar, in_scanning_range
-from src.analysis.cdf_calculations import compute_cdfs, compute_area
+from biorsp.analysis.polar_conversion import convert_to_polar, in_scanning_range
+from biorsp.analysis.cdf_calculations import compute_cdfs, compute_area
 
 
 def calculate_differences(
