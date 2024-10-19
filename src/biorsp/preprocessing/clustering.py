@@ -20,7 +20,7 @@ def run_dbscan(tsne_results, eps=4, min_samples=50, save_path=None):
     dbscan_labels += 1
 
     if save_path:
-        dbscan_results_df = pd.DataFrame(dbscan_labels, columns=["Cluster"])
+        dbscan_results_df = pd.DataFrame(dbscan_labels, columns=["cluster"])
         dbscan_results_df.to_csv(save_path, index=False)
 
     return dbscan_labels

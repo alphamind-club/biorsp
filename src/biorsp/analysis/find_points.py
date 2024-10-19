@@ -19,7 +19,7 @@ def find_foreground_background_points(
     - foreground_points: Numpy array of (x, y) coordinates for cells with expression above the threshold.
     - background_points: Numpy array of (x, y) coordinates for all cells (or selected clusters).
     """
-    dbscan_clusters = dbscan_df["Cluster"].values
+    dbscan_clusters = dbscan_df["cluster"].values
 
     if len(dbscan_clusters) != tsne_results.shape[0]:
         raise ValueError(
