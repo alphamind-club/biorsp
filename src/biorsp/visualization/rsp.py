@@ -16,6 +16,8 @@ def plot_rsp_polar(differences, save_path=None, show_plot=True):
     plt.plot(np.linspace(0, 2 * np.pi, 1000), differences, color="red")
     plt.ylim(0, 1)
 
+    plt.tight_layout()
+
     if save_path:
         plt.savefig(save_path)
 
