@@ -9,7 +9,6 @@ def test_dimensionality_reduction():
     - Loads the data and applies t-SNE and UMAP.
     - Verifies the shape of the results and checks for NaNs.
     """
-    # Load the data
     dge_file_path = "data/dge/GSM4647185_FetalHeart_1_dge.txt"
     try:
         dge_matrix = pd.read_csv(dge_file_path, delimiter="\t", index_col=0)
@@ -18,28 +17,22 @@ def test_dimensionality_reduction():
         print(f"File not found: {dge_file_path}")
         return
 
-    # Parameters for t-SNE and UMAP
     random_state = 42
     tsne_perplexity = 30
     umap_neighbors = 15
     umap_min_dist = 0.1
 
-    # Test t-SNE
     tsne_results = run_tsne(
         dge_matrix, random_state=random_state, perplexity=tsne_perplexity
     )
     print(f"t-SNE results shape: {tsne_results.shape}")
 
-    # Ensure t-SNE output shape matches (num_samples, 2)
     assert tsne_results.shape == (
         dge_matrix.shape[1],
         2,
     ), "t-SNE results should have shape (num_samples, 2)."
-
-    # Check for NaN values in t-SNE results
     assert not np.isnan(tsne_results).any(), "t-SNE results contain NaN values."
 
-    # Test UMAP
     umap_results = run_umap(
         dge_matrix,
         random_state=random_state,
@@ -48,13 +41,10 @@ def test_dimensionality_reduction():
     )
     print(f"UMAP results shape: {umap_results.shape}")
 
-    # Ensure UMAP output shape matches (num_samples, 2)
     assert umap_results.shape == (
         dge_matrix.shape[1],
         2,
     ), "UMAP results should have shape (num_samples, 2)."
-
-    # Check for NaN values in UMAP results
     assert not np.isnan(umap_results).any(), "UMAP results contain NaN values."
 
     print("All dimensionality reduction tests passed successfully.")

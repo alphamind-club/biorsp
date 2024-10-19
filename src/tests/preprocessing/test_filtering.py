@@ -10,7 +10,6 @@ def test_filtering():
     Test the filtering functions for DGE data.
     - Loads the data, applies cell and gene filtering, and verifies the output.
     """
-    # Load the data
     dge_file_path = "data/dge/GSM4647185_FetalHeart_1_dge.txt"
     try:
         dge_matrix = pd.read_csv(dge_file_path, delimiter="\t", index_col=0)
@@ -19,11 +18,9 @@ def test_filtering():
         print(f"File not found: {dge_file_path}")
         return
 
-    # Parameters for filtering
     threshold_umi = 500
     threshold_gene = 1
 
-    # Test cell filtering by UMI counts
     dge_matrix_filtered_cells = filter_cells_by_umi(dge_matrix, threshold_umi)
     print(
         f"After filtering cells by UMI > {threshold_umi}, shape: {dge_matrix_filtered_cells.shape}"
@@ -33,7 +30,6 @@ def test_filtering():
         dge_matrix_filtered_cells.shape[1] <= dge_matrix.shape[1]
     ), "Number of cells should decrease or remain the same after filtering."
 
-    # Test gene filtering by expression
     dge_matrix_filtered_genes = filter_genes_by_expression(
         dge_matrix_filtered_cells, threshold_gene
     )
@@ -48,7 +44,6 @@ def test_filtering():
         axis=1
     ).min() > threshold_gene, "All retained genes should be expressed in more than the threshold number of cells."
 
-    # Optional: check for empty results
     if dge_matrix_filtered_genes.empty:
         print("Warning: All genes or cells were filtered out.")
 
