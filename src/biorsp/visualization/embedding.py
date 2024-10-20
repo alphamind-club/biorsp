@@ -23,13 +23,21 @@ def plot_embedding(
     - colormap: Colormap to use for the scatter plot (only applies when labels are provided).
     """
     if labels is not None:
-        plt.scatter(
+        scatter = plt.scatter(
             embedding_results[:, 0],
             embedding_results[:, 1],
             c=labels,
             s=point_size,
             cmap=colormap,
         )
+
+        legend = plt.legend(*scatter.legend_elements(), title="Cluster")
+
+        for i in range(len(legend.get_texts())):
+            legend.get_texts()[i].set_text(f"{i}")
+
+        legend.get_texts()[0].set_text("Noise")
+        plt.gca().add_artist(legend)
     else:
         plt.scatter(embedding_results[:, 0], embedding_results[:, 1], s=point_size)
 
@@ -45,4 +53,4 @@ def plot_embedding(
     if show_plot:
         plt.show()
 
-    plt.clf()  # Clear figure after saving or showing to free up memory.
+    plt.clf()
