@@ -55,7 +55,7 @@ def filter_dge_matrix(dge_matrix, umi_threshold, gene_threshold, save_path=None)
     - dge_matrix_filtered: A dataframe containing the filtered cells and genes.
     """
     dge_matrix_filtered = filter_cells_by_umi(
-        dge_matrix, umi_threshold, plot=True, save_path=save_path
+        dge_matrix, umi_threshold, save_path=save_path
     )
     dge_matrix_filtered = filter_genes_by_expression(
         dge_matrix_filtered, gene_threshold, save_path=save_path
