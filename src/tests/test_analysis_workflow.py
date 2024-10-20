@@ -1,17 +1,19 @@
 import os
 import numpy as np
 import pandas as pd
-from sklearn.manifold import TSNE
-from sklearn.cluster import DBSCAN
 
-# Importing functions from biorsp package structure
 from biorsp.analysis.find_points import find_foreground_background_points
 from biorsp.analysis.rsp_calculations import calculate_rsp_area, calculate_differences
 from biorsp.analysis.polar_conversion import convert_to_polar
 from biorsp.preprocessing.filtering import filter_dge_matrix
 from biorsp.preprocessing.dimensionality_reduction import compute_tsne
 from biorsp.preprocessing.clustering import compute_dbscan
-from biorsp.visualization.rsp import plot_rsp_polar, plot_rsp_comparison
+from biorsp.visualization.embedding import plot_embedding
+from biorsp.visualization.rsp import (
+    plot_foreground_background,
+    plot_rsp_polar,
+    plot_rsp_comparison,
+)
 
 
 def test_analysis_workflow():
@@ -20,7 +22,6 @@ def test_analysis_workflow():
     - Reads DGE data, computes t-SNE and DBSCAN, isolates a gene, and performs RSP analysis.
     - Verifies the functionality of each step and the creation of plots.
     """
-    # Load the DGE data
     dge_file_path = "data/dge/GSM4647185_FetalHeart_1_dge.txt"
     try:
         dge_matrix = pd.read_csv(dge_file_path, delimiter="\t", index_col=0)
@@ -29,12 +30,16 @@ def test_analysis_workflow():
         print(f"File not found: {dge_file_path}")
         return
 
-    # Parameters for analysis
     gene_name = "Tnnt2"  # Replace with a gene of interest
     threshold = 1
+    selected_clusters = [1]
     random_state = 42
 
-    # Step 1: Filter cells and genes with low expression
+    save_path_tsne = "test_tsne.png"
+    save_path_foreground_background = "test_foreground_background.png"
+    save_path_polar = "test_rsp_polar.png"
+    save_path_comparison = "test_rsp_comparison.png"
+
     try:
         dge_matrix_filtered = filter_dge_matrix(
             dge_matrix, umi_threshold=500, gene_threshold=1
@@ -44,7 +49,6 @@ def test_analysis_workflow():
         print(f"ValueError during DGE matrix filtering: {e}")
         return
 
-    # Step 2: Compute t-SNE embedding
     try:
         tsne_results = compute_tsne(
             dge_matrix_filtered,
@@ -57,23 +61,38 @@ def test_analysis_workflow():
         print(f"ValueError during t-SNE computation: {e}")
         return
 
-    # Step 3: Run DBSCAN clustering on the t-SNE results
     try:
         dbscan_labels = compute_dbscan(tsne_results, eps=4, min_samples=10)
         dbscan_results = pd.DataFrame(dbscan_labels, columns=["cluster"])
-        dbscan_results["cluster"] = dbscan_results["cluster"].astype(
-            int
-        )  # Ensure integer type for consistency
         unique_clusters = set(dbscan_labels)
         print(f"Computed DBSCAN results with unique clusters: {unique_clusters}")
     except ValueError as e:
         print(f"ValueError during DBSCAN computation: {e}")
         return
 
-    # Ensure selected_clusters matches available clusters
-    clusters = [c for c in unique_clusters if c >= 0]  # Exclude noise points (-1)
+    try:
+        plot_embedding(
+            tsne_results,
+            labels=dbscan_labels,
+            method="t-SNE",
+            save_path=save_path_tsne,
+            show_plot=True,
+        )
+        assert os.path.exists(
+            save_path_tsne
+        ), f"t-SNE plot image was not saved at {save_path_polar}."
+        print(f"t-SNE plot image successfully saved at {save_path_polar}.")
+    except ValueError as e:
+        print(f"ValueError during t-SNE plot: {e}")
+        return
+    finally:
+        if os.path.exists(save_path_tsne):
+            try:
+                os.remove(save_path_tsne)
+                print(f"Removed t-SNE plot image at {save_path_tsne}.")
+            except OSError as e:
+                print(f"Error removing t-SNE plot image at {save_path_tsne}: {e}")
 
-    # Step 4: Find foreground and background points for the gene
     try:
         foreground_points, background_points = find_foreground_background_points(
             gene_name=gene_name,
@@ -81,7 +100,7 @@ def test_analysis_workflow():
             tsne_results=tsne_results,
             threshold=threshold,
             dbscan_df=dbscan_results,
-            selected_clusters=clusters,
+            selected_clusters=selected_clusters,
         )
         print(f"Foreground points shape: {foreground_points.shape}")
         print(f"Background points shape: {background_points.shape}")
@@ -89,19 +108,38 @@ def test_analysis_workflow():
         print(f"ValueError during foreground/background point calculation: {e}")
         return
 
-    # Step 5: Convert points to polar coordinates
     try:
-        # Calculate the vantage point as the mean of background points
+        plot_foreground_background(
+            foreground_points=foreground_points,
+            background_points=background_points,
+            save_path=save_path_foreground_background,
+            show_plot=True,
+        )
+    except ValueError as e:
+        print(f"ValueError during foreground/background point plotting: {e}")
+        return
+    finally:
+        if os.path.exists(save_path_foreground_background):
+            try:
+                os.remove(save_path_foreground_background)
+                print(
+                    f"Removed foreground/background point plot image at {save_path_foreground_background}."
+                )
+            except OSError as e:
+                print(
+                    f"Error removing foreground/background point plot image at {save_path_foreground_background}: {e}"
+                )
+
+    try:
         vantage_point = np.mean(background_points, axis=0)
-        fg_r, fg_theta = convert_to_polar(foreground_points, vantage_point)
-        bg_r, bg_theta = convert_to_polar(background_points, vantage_point)
+        _, fg_theta = convert_to_polar(foreground_points, vantage_point)
+        _, bg_theta = convert_to_polar(background_points, vantage_point)
         print(f"Converted foreground points to polar coordinates: {fg_theta.shape}")
         print(f"Converted background points to polar coordinates: {bg_theta.shape}")
     except ValueError as e:
         print(f"ValueError during conversion to polar coordinates: {e}")
         return
 
-    # Step 6: Calculate RSP area and differences
     try:
         differences = calculate_differences(
             foreground_points=foreground_points,
@@ -120,13 +158,8 @@ def test_analysis_workflow():
         print(f"ValueError during RSP area calculation: {e}")
         return
 
-    # Step 7: Visualize RSP results
-    save_path_polar = "test_rsp_polar.png"
-    save_path_comparison = "test_rsp_comparison.png"
-
-    # Step 8: Generate and save the polar plot
     try:
-        plot_rsp_polar(differences, save_path=save_path_polar, show_plot=False)
+        plot_rsp_polar(differences, save_path=save_path_polar, show_plot=True)
         assert os.path.exists(
             save_path_polar
         ), f"Polar plot not saved at {save_path_polar}."
@@ -137,21 +170,20 @@ def test_analysis_workflow():
     except OSError as e:
         print(f"OSError during saving polar plot: {e}")
         return
-    # finally:
-    #     if os.path.exists(save_path_polar):
-    #         try:
-    #             os.remove(save_path_polar)
-    #             print(f"Cleaned up: removed {save_path_polar}.")
-    #         except OSError as e:
-    #             print(f"OSError during cleanup of {save_path_polar}: {e}")
+    finally:
+        if os.path.exists(save_path_polar):
+            try:
+                os.remove(save_path_polar)
+                print(f"Cleaned up: removed {save_path_polar}.")
+            except OSError as e:
+                print(f"OSError during cleanup of {save_path_polar}: {e}")
 
-    # Step 9: Generate and save the comparison plot
     try:
         plot_rsp_comparison(
             rsp_area=rsp_area,
             differences=differences,
             save_path=save_path_comparison,
-            show_plot=False,
+            show_plot=True,
         )
         assert os.path.exists(
             save_path_comparison
@@ -163,13 +195,13 @@ def test_analysis_workflow():
     except OSError as e:
         print(f"OSError during saving comparison plot: {e}")
         return
-    # finally:
-    #     if os.path.exists(save_path_comparison):
-    #         try:
-    #             os.remove(save_path_comparison)
-    #             print(f"Cleaned up: removed {save_path_comparison}.")
-    #         except OSError as e:
-    #             print(f"OSError during cleanup of {save_path_comparison}: {e}")
+    finally:
+        if os.path.exists(save_path_comparison):
+            try:
+                os.remove(save_path_comparison)
+                print(f"Cleaned up: removed {save_path_comparison}.")
+            except OSError as e:
+                print(f"OSError during cleanup of {save_path_comparison}: {e}")
 
     print("All RSP analysis workflow tests passed successfully.")
 
