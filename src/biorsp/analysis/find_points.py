@@ -17,7 +17,7 @@ def find_foreground_background_points(
 
     Returns:
     - foreground_points: Numpy array of (x, y) coordinates for cells with expression above the threshold.
-    - background_points: Numpy array of (x, y) coordinates for all cells (or selected clusters).
+    - background_points: Numpy array of (x, y) coordinates for all cells within selected clusters.
     """
     dbscan_clusters = dbscan_df["cluster"].values
 
@@ -31,7 +31,22 @@ def find_foreground_background_points(
 
     gene_expression = dge_matrix.loc[gene_name]
     cell_barcodes = dge_matrix.columns
-    cell_index_map = {barcode: idx for idx, barcode in enumerate(cell_barcodes)}
+
+    # Filter cells by selected clusters if specified
+    if selected_clusters is not None:
+        selected_indices = [
+            idx
+            for idx, cluster in enumerate(dbscan_clusters)
+            if cluster in selected_clusters
+        ]
+        # Filter the t-SNE results and gene expression data based on selected clusters
+        tsne_results = tsne_results[selected_indices]
+        selected_barcodes = [cell_barcodes[idx] for idx in selected_indices]
+        gene_expression = gene_expression[selected_barcodes]
+        cell_index_map = {barcode: idx for idx, barcode in enumerate(selected_barcodes)}
+    else:
+        selected_indices = range(len(dbscan_clusters))
+        cell_index_map = {barcode: idx for idx, barcode in enumerate(cell_barcodes)}
 
     # Foreground points: Cells with gene expression above the threshold
     foreground_indices = gene_expression[gene_expression > threshold].index
@@ -39,26 +54,7 @@ def find_foreground_background_points(
         [tsne_results[cell_index_map[barcode]] for barcode in foreground_indices]
     )
 
-    if selected_clusters is not None:
-        foreground_indices_filtered = [
-            i
-            for i in foreground_indices
-            if dbscan_clusters[cell_index_map[i]] in selected_clusters
-        ]
-        foreground_points = np.array(
-            [
-                tsne_results[cell_index_map[barcode]]
-                for barcode in foreground_indices_filtered
-            ]
-        )
-
-        selected_indices = [
-            idx
-            for idx, cluster in enumerate(dbscan_clusters)
-            if cluster in selected_clusters
-        ]
-        background_points = tsne_results[selected_indices]
-    else:
-        background_points = tsne_results
+    # Background points are all cells within the selected clusters
+    background_points = tsne_results
 
     return foreground_points, np.array(background_points)
