@@ -42,7 +42,7 @@ def test_analysis_workflow():
 
     try:
         dge_matrix_filtered = filter_dge_matrix(
-            dge_matrix, umi_threshold=500, gene_threshold=1
+            dge_matrix, threshold_umi=500, threshold_gene=1
         )
         print(f"Filtered DGE matrix with shape: {dge_matrix_filtered.shape}")
     except ValueError as e:
