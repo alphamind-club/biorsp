@@ -45,7 +45,7 @@ def measure_angular_variation(angles_radians: np.ndarray) -> float:
     return circstd(angles_radians)
 
 
-def test_consistency_across_embeddings(
+def consistency_across_embeddings(
     spatial_data: AnnData,
     genes_to_test: list[str],
     coordinate_systems: list[str],
@@ -180,7 +180,7 @@ def test_consistency_across_embeddings(
     return pd.DataFrame(rows).set_index("gene")
 
 
-def test_parameter_robustness(
+def parameter_robustness(
     spatial_data: AnnData,
     genes_to_test: list[str],
     reference_point: int | Sequence[float] | np.ndarray,
@@ -356,7 +356,7 @@ def comprehensive_stability_check(
         'passes_all_stability_tests' contains a boolean per gene.
 
     """
-    coord_stability = test_consistency_across_embeddings(
+    coord_stability = consistency_across_embeddings(
         spatial_data,
         genes_to_test,
         coordinate_systems,
@@ -374,7 +374,7 @@ def comprehensive_stability_check(
             method=reference_method,
         )
 
-        param_stability = test_parameter_robustness(
+        param_stability = parameter_robustness(
             spatial_data,
             genes_to_test,
             reference_point,

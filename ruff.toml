@@ -1,7 +1,7 @@
 # Ruff configuration: use top-level keys for ruff.toml
 line-length = 88
 lint.extend-select = ["E", "F", "W", "C", "ANN", "D", "N", "NPY", "PLR", "FBT", "UP"]
-lint.ignore = ["E203"]
+lint.ignore = ["E203", "PLR0913", "C901", "PLR0912", "PLR0915"]
 exclude = [".venv", "biorsp.egg-info", "output", "data"]
 
 # Per-file ignores for experimental or generated code where stricter rules are noisy

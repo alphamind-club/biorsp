@@ -21,7 +21,7 @@ os.makedirs(FIG_DIR, exist_ok=True)
 
 def format_condition_label(cond: str) -> str:
     """Format condition names for display.
-    
+
     Maps common condition patterns to abbreviations:
     - acute_kidney_failure -> AKI
     - chronic -> CKD
@@ -37,10 +37,10 @@ def format_condition_label(cond: str) -> str:
 
 def format_metric_label(metric: str) -> str:
     """Format metric names for display.
-    
+
     Replaces underscores with spaces.
     """
-    return metric.replace('_', ' ')
+    return metric.replace("_", " ")
 
 
 def load_discoveries(outputs_dir: str = "examples/outputs") -> Dict[str, pd.DataFrame]:
@@ -100,7 +100,7 @@ def make_metric_matrix(
 
 def heatmap(mat: pd.DataFrame, outpath: str, cmap: str = "vlag"):
     plt.figure(figsize=(14, max(10, 0.5 * len(mat))))
-    sns.heatmap(mat, cmap=cmap, center=0, linewidths=0.5, cbar_kws={'shrink': 0.8})
+    sns.heatmap(mat, cmap=cmap, center=0, linewidths=0.5, cbar_kws={"shrink": 0.8})
     plt.xlabel("Conditions", fontsize=24)
     plt.ylabel("Features", fontsize=24)
     plt.xticks(fontsize=20)
@@ -114,8 +114,8 @@ def clustermap(mat: pd.DataFrame, outpath: str, cmap: str = "vlag"):
     g = sns.clustermap(mat.fillna(0), cmap=cmap, center=0, figsize=(16, 16))
     g.ax_heatmap.set_xlabel("Conditions", fontsize=24)
     g.ax_heatmap.set_ylabel("Features", fontsize=24)
-    g.ax_heatmap.tick_params(axis='x', labelsize=20)
-    g.ax_heatmap.tick_params(axis='y', labelsize=20)
+    g.ax_heatmap.tick_params(axis="x", labelsize=20)
+    g.ax_heatmap.tick_params(axis="y", labelsize=20)
     plt.savefig(outpath)
     plt.close()
 
@@ -146,7 +146,13 @@ def bar_top_genes(
         print("No top genes available for bar plot.")
         return
     plt.figure(figsize=(14, 8))
-    sns.barplot(x="condition", y="metric", hue="gene", data=df_all, order=["Normal", "AKI", "CKD"])
+    sns.barplot(
+        x="condition",
+        y="metric",
+        hue="gene",
+        data=df_all,
+        order=["Normal", "AKI", "CKD"],
+    )
     plt.xlabel("Condition", fontsize=24)
     plt.ylabel(f"{format_metric_label(metric)} Value", fontsize=24)
     plt.xticks(rotation=30, fontsize=20)
@@ -186,7 +192,14 @@ def scatter_metrics(
         return
     df_all = pd.concat(rows, ignore_index=True)
     plt.figure(figsize=(10, 8))
-    sns.scatterplot(data=df_all, x=x, y=y, hue="condition", alpha=0.7, hue_order=["Normal", "AKI", "CKD"])
+    sns.scatterplot(
+        data=df_all,
+        x=x,
+        y=y,
+        hue="condition",
+        alpha=0.7,
+        hue_order=["Normal", "AKI", "CKD"],
+    )
     plt.xlabel(format_metric_label(x), fontsize=24)
     plt.ylabel(format_metric_label(y), fontsize=24)
     plt.xticks(fontsize=20)
@@ -198,7 +211,9 @@ def scatter_metrics(
     plt.close()
 
 
-def venn_top_genes(data: Dict[str, pd.DataFrame], top_n: int | None = None, outpath: str = None):
+def venn_top_genes(
+    data: Dict[str, pd.DataFrame], top_n: int | None = None, outpath: str = None
+):
     conds = list(data.keys())
     conds = [format_condition_label(c) for c in conds]
     sets = []
@@ -275,7 +290,10 @@ def venn_top_genes(data: Dict[str, pd.DataFrame], top_n: int | None = None, outp
 
 
 def boxplot_metric(
-    data: Dict[str, pd.DataFrame], metric: str = "CRA W1", top_n: int | None = None, outpath: str = None
+    data: Dict[str, pd.DataFrame],
+    metric: str = "CRA W1",
+    top_n: int | None = None,
+    outpath: str = None,
 ):
     rows = []
     for cond, df in data.items():
@@ -330,7 +348,7 @@ def main():
     parser.add_argument(
         "--top-n",
         type=str,
-        default='50',
+        default="50",
         help="Top N genes per condition for bar/venn plots, or 'all' to use all genes",
     )
     parser.add_argument(
@@ -338,7 +356,7 @@ def main():
     )
     args = parser.parse_args()
 
-    if args.top_n == 'all':
+    if args.top_n == "all":
         top_n = None
     else:
         top_n = int(args.top_n)
@@ -366,7 +384,9 @@ def main():
 
     if top_n is not None:
         heatmap(mat_top, os.path.join(FIG_DIR_ACTUAL, f"{args.metric}_heatmap.png"))
-        clustermap(mat_top, os.path.join(FIG_DIR_ACTUAL, f"{args.metric}_clustermap.png"))
+        clustermap(
+            mat_top, os.path.join(FIG_DIR_ACTUAL, f"{args.metric}_clustermap.png")
+        )
 
     bar_top_genes(
         data,

@@ -20,7 +20,11 @@ def run_stability_analysis():
         genes_to_test=genes,
         coordinate_systems=["X_umap", "X_pca"],
         reference_method="geometric_median",
-        analysis_settings={"allow_uncalibrated_analysis": True, "check_spatial_distortion": False, "confounding_factors": ["batch", "clusters"]},
+        analysis_settings={
+            "allow_uncalibrated_analysis": True,
+            "check_spatial_distortion": False,
+            "confounding_factors": ["batch", "clusters"],
+        },
     )
 
 

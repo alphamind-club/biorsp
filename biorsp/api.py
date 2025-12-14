@@ -7,7 +7,7 @@ import inspect
 import logging
 import sys
 import warnings
-from typing import TYPE_CHECKING, Sequence, cast
+from typing import TYPE_CHECKING, Any, Sequence, cast
 
 import numpy as np
 import pandas as pd
@@ -565,10 +565,9 @@ def find_spatially_patterned_genes(
 
     logger.info("Permutation indices built: shape %s", perm_indices.shape)
 
-    results_list = []
-    rsp_curves_dict = {}
-
-    for gene in tqdm(genes_to_test, desc="Scanning genes"):
+    def _process_single_gene(
+        gene: str,
+    ) -> tuple[dict[str, Any] | None, np.ndarray | None]:
         try:
             weights = compute_gene_weights(
                 subset_data,
@@ -610,16 +609,23 @@ def find_spatially_patterned_genes(
                 "null_std_W1": perm_res["null_std_w1"],
             }
 
-            results_list.append(row)
-            rsp_curves_dict[gene] = perm_res["rsp_obs"]
-
+            return row, perm_res["rsp_obs"]
         except BioRSPValidationError as e:
             warnings.warn(f"Gene {gene} failed validation: {e}", stacklevel=2)
-            continue
+            return None, None
         except (ValueError, KeyError) as exc:
             logger.exception("Error processing gene %s", gene)
             warnings.warn(f"Error processing gene {gene}: {exc}", stacklevel=2)
-            continue
+            return None, None
+
+    results_list = []
+    rsp_curves_dict = {}
+
+    for gene in tqdm(genes_to_test, desc="Scanning genes"):
+        row, rsp_curve = _process_single_gene(gene)
+        if row is not None:
+            results_list.append(row)
+            rsp_curves_dict[gene] = rsp_curve
 
     if len(results_list) == 0:
         msg = "No genes passed validation. Check expression levels and filters."
