@@ -1,11 +1,13 @@
 """Geometry-related functions for BioRSP."""
 
-from typing import Optional, Sequence, Tuple, Union
+from __future__ import annotations
+
+from typing import Sequence
 
 import numpy as np
-from scipy.sparse import csr_matrix                
-from scipy.sparse.csgraph import dijkstra                
-from scipy.stats import pearsonr                
+from scipy.sparse import csr_matrix
+from scipy.sparse.csgraph import dijkstra
+from scipy.stats import pearsonr
 
 MIN_CELL_COUNT_FOR_DISTORTION = 10
 
@@ -17,7 +19,8 @@ def geometric_median(
 ) -> np.ndarray:
     """Compute a geometric median for a set of points.
 
-    The geometric median is robust to outliers and useful as a vantage candidate."""
+    The geometric median is robust to outliers and useful as a vantage candidate.
+    """
     pts = np.asarray(points)
     median = np.mean(pts, axis=0)
     for _ in range(max_iter):
@@ -31,7 +34,12 @@ def geometric_median(
     return median
 
 
-def bootstrap_vantage(coords, n_boot=25, frac=0.8, seed=0):
+def bootstrap_vantage(
+    coords: np.ndarray,
+    n_boot: int = 25,
+    frac: float = 0.8,
+    seed: int = 0,
+) -> float:
     """Bootstrap the vantage to quantify stability (VSS)."""
     rng = np.random.default_rng(seed)
     coords = np.asarray(coords)
@@ -52,7 +60,7 @@ def bootstrap_vantage(coords, n_boot=25, frac=0.8, seed=0):
 def cartesian_to_polar(
     coords: np.ndarray,
     vantage_point: np.ndarray,
-) -> Tuple[np.ndarray, np.ndarray]:
+) -> tuple[np.ndarray, np.ndarray]:
     """Convert Cartesian coordinates to polar coordinates relative to a vantage point.
 
     Parameters
@@ -65,7 +73,9 @@ def cartesian_to_polar(
     Returns
     -------
     r, theta : Tuple[np.ndarray, np.ndarray]
-        Radii and angles in radians for each cell."""
+        Radii and angles in radians for each cell.
+
+    """
     coords = np.asarray(coords)
     vantage_point = np.asarray(vantage_point)
 
@@ -78,7 +88,7 @@ def cartesian_to_polar(
 
 def compute_geodesic_distances(
     adjacency: csr_matrix,
-    vantage_indices: Optional[Union[int, Sequence[int]]],
+    vantage_indices: int | Sequence[int] | None,
 ) -> np.ndarray:
     """Compute geodesic distances on the graph from vantage point(s).
 
@@ -92,9 +102,12 @@ def compute_geodesic_distances(
     Returns
     -------
     r_geo : np.ndarray
-        Geodesic distances."""
+        Geodesic distances.
+
+    """
     if vantage_indices is None:
-        raise ValueError("vantage_indices must be provided")
+        msg = "vantage_indices must be provided"
+        raise ValueError(msg)
 
     if isinstance(vantage_indices, (int, np.integer)):
         indices = [int(vantage_indices)]
@@ -103,22 +116,20 @@ def compute_geodesic_distances(
 
     dist_matrix = dijkstra(adjacency, directed=False, indices=indices)
 
-    if len(indices) > 1:
-        r_geo = np.min(dist_matrix, axis=0)
-    else:
-        r_geo = dist_matrix.flatten()
-
-    return r_geo
+    return np.min(dist_matrix, axis=0) if len(indices) > 1 else dist_matrix.flatten()
 
 
-def define_angular_grid(delta_phi_deg=5):
+def define_angular_grid(delta_phi_deg: float = 5) -> np.ndarray:
     """Define angular grid points."""
     num_points = int(np.ceil(360 / delta_phi_deg))
-    grid_points = np.linspace(-np.pi, np.pi, num_points, endpoint=False)
-    return grid_points
+    return np.linspace(-np.pi, np.pi, num_points, endpoint=False)
 
 
-def bin_cells_angular(theta, weights, grid_points):
+def bin_cells_angular(
+    theta: np.ndarray,
+    weights: np.ndarray,
+    grid_points: np.ndarray,
+) -> np.ndarray:
     """Bin cells into angular grid and sum their weights.
 
     Parameters
@@ -133,7 +144,9 @@ def bin_cells_angular(theta, weights, grid_points):
     Returns
     -------
     hist : np.ndarray
-        Weighted histogram."""
+        Weighted histogram.
+
+    """
     hist, _ = np.histogram(
         theta,
         bins=len(grid_points),
@@ -143,7 +156,7 @@ def bin_cells_angular(theta, weights, grid_points):
     return hist
 
 
-def convolve_histogram(hist, window_width_bins):
+def convolve_histogram(hist: np.ndarray, window_width_bins: int) -> np.ndarray:
     """Apply circular convolution to smooth the histogram (sliding window)."""
     kernel = np.ones(window_width_bins)
 
@@ -162,14 +175,14 @@ def convolve_histogram(hist, window_width_bins):
 
 
 def compute_sector_counts_convolved(
-    theta,
-    r,
-    weights,
-    grid_points,
-    window_width_deg=30,
-    r_min=None,
-    r_max=None,
-):
+    theta: np.ndarray,
+    r: np.ndarray,
+    weights: np.ndarray,
+    grid_points: np.ndarray,
+    window_width_deg: float = 30,
+    r_min: float | None = None,
+    r_max: float | None = None,
+) -> np.ndarray:
     """Compute weighted counts in angular sectors using convolution."""
     valid_r = np.ones(len(r), dtype=bool)
     if r_min is not None:
@@ -186,12 +199,15 @@ def compute_sector_counts_convolved(
     window_width_bins = int(np.round(window_width_deg / delta_phi_deg))
     window_width_bins = max(1, window_width_bins)
 
-    counts = convolve_histogram(hist, window_width_bins)
-
-    return counts
+    return convolve_histogram(hist, window_width_bins)
 
 
-def compute_local_distortion(r_geo, r_eucl, r_min=None, r_max=None):
+def compute_local_distortion(
+    r_geo: np.ndarray,
+    r_eucl: np.ndarray,
+    r_min: float | None = None,
+    r_max: float | None = None,
+) -> float:
     """Compute local distortion score.
 
     Computes the correlation between high-dimensional geodesic distances and
@@ -211,7 +227,9 @@ def compute_local_distortion(r_geo, r_eucl, r_min=None, r_max=None):
     Returns
     -------
     distortion_score : float
-        Pearson correlation coefficient."""
+        Pearson correlation coefficient.
+
+    """
     mask = np.ones(len(r_geo), dtype=bool)
     if r_min is not None:
         mask &= r_eucl >= r_min
@@ -225,7 +243,13 @@ def compute_local_distortion(r_geo, r_eucl, r_min=None, r_max=None):
     return corr
 
 
-def bin_cells_sparse(theta, grid_points, r=None, r_min=None, r_max=None):
+def bin_cells_sparse(
+    theta: np.ndarray,
+    grid_points: np.ndarray,
+    r: np.ndarray | None = None,
+    r_min: float | None = None,
+    r_max: float | None = None,
+) -> csr_matrix:
     """Vectorized binning of cells into angular sectors using sparse matrix.
 
     Parameters
@@ -244,7 +268,9 @@ def bin_cells_sparse(theta, grid_points, r=None, r_min=None, r_max=None):
     Returns
     -------
     b_map : scipy.sparse.csr_matrix
-        Binary matrix (N_cells x K_bins) where b_ij = 1 if cell i is in bin j."""
+        Binary matrix (N_cells x K_bins) where b_ij = 1 if cell i is in bin j.
+
+    """
     n_cells = len(theta)
     n_bins = len(grid_points)
 
@@ -268,12 +294,10 @@ def bin_cells_sparse(theta, grid_points, r=None, r_min=None, r_max=None):
     valid_bins = bin_indices[mask]
 
     data = np.ones(len(valid_indices), dtype=np.float32)
-    b_map = csr_matrix((data, (valid_indices, valid_bins)), shape=(n_cells, n_bins))
-
-    return b_map
+    return csr_matrix((data, (valid_indices, valid_bins)), shape=(n_cells, n_bins))
 
 
-def sector_counts_from_map(bin_map, weights):
+def sector_counts_from_map(bin_map: csr_matrix, weights: np.ndarray) -> np.ndarray:
     """Fast weighted sector counts using a precomputed bin map."""
     result = bin_map.T @ weights
     if hasattr(result, "A"):

@@ -1,7 +1,8 @@
 """Validation helpers and checks for BioRSP analysis.
 
 This module exposes small validators and utility functions that enforce
-analysis preconditions and report helpful messages for users."""
+analysis preconditions and report helpful messages for users.
+"""
 
 from __future__ import annotations
 
@@ -32,7 +33,8 @@ def validate_minimum_cells(
 
     This function raises a BioRSPValidationError if the cell count is too low
     to perform reliable conditional inference. It may also warn when
-    the count is below publication thresholds but exploratory mode is allowed."""
+    the count is below publication thresholds but exploratory mode is allowed.
+    """
     if n_cells < exploratory_min:
         msg = (
             f"Too few cells ({n_cells}). Minimum required: {exploratory_min} "
@@ -82,7 +84,9 @@ def validate_effective_mass(
     Raises
     ------
     BioRSPValidationError
-        If the effective mass is below the specified threshold."""
+        If the effective mass is below the specified threshold.
+
+    """
     eff_mass = np.sum(weights)
 
     if eff_mass < min_effective_mass:
@@ -108,7 +112,9 @@ def validate_annulus_cells(n_annulus: int, min_annulus: int = 100) -> None:
     Raises
     ------
     BioRSPValidationError
-        If annulus size is below the specified threshold."""
+        If annulus size is below the specified threshold.
+
+    """
     if n_annulus < min_annulus:
         msg = (
             f"Annulus contains too few cells ({n_annulus} < {min_annulus}). "
@@ -126,7 +132,8 @@ def validate_strata_sizes(
 
     Returns a tuple ``(valid, small_strata)`` where ``valid`` indicates whether
     all strata meet the minimum size and ``small_strata`` lists the labels
-    deemed too small."""
+    deemed too small.
+    """
     unique, counts = np.unique(strata, return_counts=True)
     small_mask = counts < min_stratum_size
     small_strata = list(unique[small_mask])
@@ -185,7 +192,9 @@ def validate_covariates(
     Raises
     ------
     BioRSPValidationError
-        If required covariates missing and allow_uncalibrated=False."""
+        If required covariates missing and allow_uncalibrated=False.
+
+    """
     if covariate_keys is None:
         covariate_keys = []
 
@@ -258,7 +267,9 @@ def validate_vantage_stability(
     Raises
     ------
     BioRSPValidationError
-        If vantage is unstable."""
+        If vantage is unstable.
+
+    """
     threshold = threshold_frac * embedding_diameter
 
     if vss > threshold:
@@ -289,7 +300,9 @@ def validate_embedding_distortion(
     Raises
     ------
     BioRSPValidationError
-        If embedding is too distorted."""
+        If embedding is too distorted.
+
+    """
     if np.isnan(distortion_score):
         warnings.warn(
             (
@@ -332,7 +345,9 @@ def compute_fdr_bh(
     reject : np.ndarray (bool)
         True for rejected hypotheses (discoveries).
     qvalues : np.ndarray
-        Adjusted q-values."""
+        Adjusted q-values.
+
+    """
     pvalues = np.asarray(pvalues)
     n = len(pvalues)
 
@@ -381,7 +396,9 @@ def compute_fdr_by(
     reject : np.ndarray (bool)
         Discoveries.
     qvalues : np.ndarray
-        Adjusted q-values."""
+        Adjusted q-values.
+
+    """
     n = len(pvalues)
     if n == 0:
         return np.array([], dtype=bool), np.array([])

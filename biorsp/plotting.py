@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from contextlib import suppress
 from typing import TYPE_CHECKING
 
 import matplotlib.pyplot as plt
@@ -42,7 +43,9 @@ def plot_rsp(
     Returns
     -------
     matplotlib.axes.Axes
-        The axis containing the plot."""
+        The axis containing the plot.
+
+    """
     if "biorsp" not in adata.uns or "rsp_curves" not in adata.uns["biorsp"]:
         msg = "Run find_spatially_patterned_genes first to compute RSP curves."
         raise ValueError(msg)
@@ -67,15 +70,13 @@ def plot_rsp(
                 getattr(ax, "name", "") == "polar"
                 or getattr(ax, "projection", "") == "polar"
             )
-        except Exception:
+        except AttributeError:
             is_polar = False
         if not is_polar:
             fig = ax.figure
             pos = ax.get_position()
-            try:
+            with suppress(Exception):
                 ax.remove()
-            except Exception:
-                pass
             ax = fig.add_axes(pos, projection="polar")
 
     plot_label = label if label is not None else gene
@@ -128,7 +129,7 @@ def plot_rsp(
             title += f", p={p:.3f}"
 
     ax.set_title(title)
-    handles, labels = ax.get_legend_handles_labels()
+    _handles, labels = ax.get_legend_handles_labels()
     has_labels = any(lbl and not str(lbl).startswith("_") for lbl in labels)
     if has_labels:
         ax.legend()
@@ -214,7 +215,7 @@ def plot_embedding_with_sectors(
                 label="Preferred Dir",
             )
 
-    handles, labels = ax.get_legend_handles_labels()
+    _handles, labels = ax.get_legend_handles_labels()
     has_labels = any(lbl and not str(lbl).startswith("_") for lbl in labels)
     if has_labels:
         ax.legend()

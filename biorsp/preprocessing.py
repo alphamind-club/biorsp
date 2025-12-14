@@ -6,10 +6,9 @@ import warnings
 from typing import TYPE_CHECKING
 
 import numpy as np
-from scipy.sparse import issparse                        
-from sklearn.mixture import GaussianMixture                        
-from sklearn.preprocessing import OneHotEncoder                        
-from sklearn.preprocessing import StandardScaler
+from scipy.sparse import issparse
+from sklearn.mixture import GaussianMixture
+from sklearn.preprocessing import OneHotEncoder, StandardScaler
 
 LOG_NORM_THRESHOLD = 20
 MIN_NONZERO_FOR_GMM = 50
@@ -37,7 +36,9 @@ def get_expression_vector(
     Returns
     -------
     np.ndarray
-        1D array of gene expression values."""
+        1D array of gene expression values.
+
+    """
     if gene not in adata.var_names:
         msg = f"Gene {gene} not found in adata."
         raise ValueError(msg)
@@ -54,7 +55,8 @@ def check_normalization(adata: AnnData) -> None:
 
     This function warns if maximum expression values indicate integer-counts
     (not log-scaled), which may affect downstream methods assuming log
-    normalization."""
+    normalization.
+    """
     max_val = adata.X.max() if issparse(adata.X) else np.max(adata.X)
 
     if max_val > LOG_NORM_THRESHOLD:
@@ -92,7 +94,9 @@ def compute_gene_weights(
     Returns
     -------
     weights : np.ndarray
-        Continuous weights in [0, 1]."""
+        Continuous weights in [0, 1].
+
+    """
     check_normalization(adata)
     expr = get_expression_vector(adata, gene, layer=layer)
 
@@ -163,7 +167,9 @@ def build_covariate_matrix(
     Returns
     -------
     np.ndarray
-        Covariate matrix of shape ``(n_obs, n_covariates)``."""
+        Covariate matrix of shape ``(n_obs, n_covariates)``.
+
+    """
     cols = []
     if include_log_depth and "n_counts" in adata.obs:
         depth = np.log1p(adata.obs["n_counts"].to_numpy().astype(float))

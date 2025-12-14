@@ -1,16 +1,17 @@
 """BioRSP API module for radial spatial pattern analysis."""
 
-import hashlib
-import logging
+from __future__ import annotations
 
-logger = logging.getLogger(__name__)
+import hashlib
+import inspect
+import logging
 import sys
 import warnings
-from typing import Any, List, Optional, Sequence, Union, cast
+from typing import TYPE_CHECKING, Sequence, cast
 
 import numpy as np
 import pandas as pd
-from anndata import AnnData
+from sklearn.neighbors import NearestNeighbors
 from tqdm import tqdm
 
 from .geometry import (
@@ -39,6 +40,11 @@ from .validation import (
     validate_vantage_stability,
 )
 
+if TYPE_CHECKING:
+    from anndata import AnnData
+
+logger = logging.getLogger(__name__)
+
 __version__ = "3.0.0-dev"
 
 
@@ -51,22 +57,22 @@ def get_code_version() -> str:
     Returns
     -------
     str
-        Short hash string representing the current code version."""
-    import inspect
+        Short hash string representing the current code version.
 
+    """
     source = inspect.getsource(sys.modules[__name__])
-    return hashlib.md5(source.encode()).hexdigest()[:8]
+    return hashlib.sha256(source.encode()).hexdigest()[:8]
 
 
 def define_reference_point(
     spatial_data: AnnData,
     coordinate_system: str = "X_umap",
     method: str = "coordinates",
-    x_coordinate: Optional[float] = None,
-    y_coordinate: Optional[float] = None,
-    cluster_column: Optional[str] = None,
-    cluster_name: Optional[str] = None,
-    trajectory_column: Optional[str] = None,
+    x_coordinate: float | None = None,
+    y_coordinate: float | None = None,
+    cluster_column: str | None = None,
+    cluster_name: str | None = None,
+    trajectory_column: str | None = None,
 ) -> np.ndarray:
     """Choose a reference point (center) for radial spatial analysis.
 
@@ -108,34 +114,37 @@ def define_reference_point(
             method="cluster_center",
             cluster_column="cell_type",
             cluster_name="stem_cells",
-        )"""
+        )
+
+    """
     if method == "coordinates":
         if x_coordinate is None or y_coordinate is None:
-            raise ValueError(
+            msg = (
                 "x_coordinate and y_coordinate must be provided for "
-                "method='coordinates'",
+                "method='coordinates'"
             )
+            raise ValueError(msg)
         return np.array([x_coordinate, y_coordinate])
 
     if method == "cluster_center":
         if cluster_column is None or cluster_name is None:
-            raise ValueError(
+            msg = (
                 "cluster_column and cluster_name must be provided for "
-                "method='cluster_center'",
+                "method='cluster_center'"
             )
+            raise ValueError(msg)
 
         if cluster_column not in spatial_data.obs:
-            raise ValueError(
-                (f"Cluster column {cluster_column} not found " "in spatial_data.obs")
-            )
+            msg = f"Cluster column {cluster_column} not found in spatial_data.obs"
+            raise ValueError(msg)
 
         mask = spatial_data.obs[cluster_column] == cluster_name
         if np.sum(mask) == 0:
-            raise ValueError(f"Cluster {cluster_name} not found in {cluster_column}")
+            msg = f"Cluster {cluster_name} not found in {cluster_column}"
+            raise ValueError(msg)
 
         coords = spatial_data.obsm[coordinate_system][mask]
-        centroid = np.mean(coords, axis=0)
-        return centroid
+        return np.mean(coords, axis=0)
 
     if method == "density_peak":
         coords = spatial_data.obsm[coordinate_system]
@@ -160,7 +169,7 @@ def define_reference_point(
                 distances = np.where(distances == 0, 1e-10, distances)
                 weights = 1 / distances
                 new_median = np.sum(weights[:, np.newaxis] * points, axis=0) / np.sum(
-                    weights
+                    weights,
                 )
                 if np.linalg.norm(new_median - median) < eps:
                     break
@@ -171,29 +180,31 @@ def define_reference_point(
 
     if method == "trajectory_start":
         if trajectory_column is None:
+            msg = "trajectory_column must be provided for method='trajectory_start'"
             raise ValueError(
-                "trajectory_column must be provided for method='trajectory_start'",
+                msg,
             )
 
         trajectory_values = spatial_data.obs[trajectory_column].to_numpy()
         earliest_idx = np.argmin(trajectory_values)
         return spatial_data.obsm[coordinate_system][earliest_idx]
 
+    msg = (
+        f"Unknown method: {method}. Choose from: coordinates, cluster_center, "
+        "density_peak, geometric_median, trajectory_start"
+    )
     raise ValueError(
-        (
-            f"Unknown method: {method}. Choose from: coordinates, cluster_center, "
-            "density_peak, geometric_median, trajectory_start"
-        )
+        msg,
     )
 
 
 def find_spatially_patterned_genes(
     spatial_data: AnnData,
-    genes_to_test: List[str],
-    reference_point: Union[int, Sequence[float], np.ndarray],
+    genes_to_test: list[str],
+    reference_point: int | Sequence[float] | np.ndarray,
     coordinate_system: str = "X_umap",
-    condition_column: Optional[str] = None,
-    condition_value: Optional[str] = None,
+    condition_column: str | None = None,
+    condition_value: str | None = None,
     inner_radius_percentile: float = 0.1,
     outer_radius_percentile: float = 0.9,
     *,
@@ -201,17 +212,17 @@ def find_spatially_patterned_genes(
     graph_distances_key: str = "connectivities",
     expression_method: str = "log_normalized",
     expression_threshold_percentile: float = 0.9,
-    expression_layer: Optional[str] = None,
+    expression_layer: str | None = None,
     angle_resolution_degrees: float = 5.0,
     smoothing_window_degrees: float = 30.0,
-    confounding_factors: Optional[List[str]] = None,
+    confounding_factors: list[str] | None = None,
     require_sample_info: bool = True,
     require_batch_info: bool = True,
     require_depth_info: bool = True,
     allow_uncalibrated_analysis: bool = False,
     num_permutations: int = 500,
     permutation_method: str = "stratified",
-    stratification_column: Optional[str] = None,
+    stratification_column: str | None = None,
     neighbors_for_matching: int = 30,
     min_group_size: int = 20,
     min_cells_required: int = 200,
@@ -311,7 +322,9 @@ def find_spatially_patterned_genes(
             outer_radius_percentile=0.8,
             num_permutations=1000,
             confounding_factors=['sample', 'batch', 'sequencing_depth']
-        )"""
+        )
+
+    """
     analysis_settings = {
         "version": __version__,
         "version_hash": get_code_version(),
@@ -326,8 +339,9 @@ def find_spatially_patterned_genes(
 
     if condition_column is not None:
         if condition_column not in spatial_data.obs:
+            msg = f"Condition column '{condition_column}' not found in spatial_data.obs"
             raise ValueError(
-                f"Condition column '{condition_column}' not found in spatial_data.obs",
+                msg,
             )
 
         condition_mask = spatial_data.obs[condition_column] == condition_value
@@ -335,8 +349,9 @@ def find_spatially_patterned_genes(
         analysis_settings["cells_in_condition"] = condition_mask.sum()
 
         if subset_data.n_obs == 0:
+            msg = f"No cells found with {condition_column} = {condition_value}"
             raise ValueError(
-                f"No cells found with {condition_column} = {condition_value}",
+                msg,
             )
     else:
         subset_data = spatial_data
@@ -359,8 +374,9 @@ def find_spatially_patterned_genes(
     )
 
     if coordinate_system not in subset_data.obsm:
+        msg = f"Coordinate system '{coordinate_system}' not found in subset_data.obsm"
         raise ValueError(
-            f"Coordinate system '{coordinate_system}' not found in subset_data.obsm",
+            msg,
         )
 
     spatial_coords = subset_data.obsm[coordinate_system][
@@ -371,11 +387,11 @@ def find_spatially_patterned_genes(
     if isinstance(reference_point, (int, np.integer)):
         reference_index = int(reference_point)
         if reference_index >= len(spatial_coords):
-            raise ValueError(f"Reference index {reference_index} out of bounds")
+            msg = f"Reference index {reference_index} out of bounds"
+            raise ValueError(msg)
         reference_coords = spatial_coords[reference_index]
     else:
         reference_coords = np.asarray(reference_point)
-        from sklearn.neighbors import NearestNeighbors
 
         coord_matcher = NearestNeighbors(n_neighbors=1).fit(spatial_coords)
         _, indices = coord_matcher.kneighbors([reference_coords])
@@ -411,12 +427,16 @@ def find_spatially_patterned_genes(
     if use_graph_distances or check_spatial_distortion:
         if graph_distances_key not in subset_data.obsp:
             if use_graph_distances:
-                raise ValueError(
+                msg = (
                     f"Graph '{graph_distances_key}' not found "
-                    "but use_graph_distances is True",
+                    "but use_graph_distances is True"
+                )
+                raise ValueError(
+                    msg,
                 )
             warnings.warn(
                 f"Graph '{graph_distances_key}' not found; skipping distortion check",
+                stacklevel=2,
             )
             check_spatial_distortion = False
         else:
@@ -477,21 +497,28 @@ def find_spatially_patterned_genes(
     if permutation_method == "stratified":
         if stratification_column is not None:
             if stratification_column not in subset_data.obs:
+                msg = f"Stratify key '{stratification_column}' not in subset_data.obs"
                 raise ValueError(
-                    f"Stratify key '{stratification_column}' not in subset_data.obs",
+                    msg,
                 )
             strata = subset_data.obs[stratification_column].astype(str).to_numpy()
         else:
-            strata_cols = []
-            for key in confounding_factors or []:
-                if key in subset_data.obs:
-                    if subset_data.obs[key].dtype.name in ["category", "object"]:
-                        strata_cols.append(subset_data.obs[key].astype(str))
+            strata_cols = [
+                subset_data.obs[key].astype(str)
+                for key in confounding_factors or []
+                if (
+                    key in subset_data.obs
+                    and subset_data.obs[key].dtype.name in ["category", "object"]
+                )
+            ]
 
             if len(strata_cols) == 0:
-                raise ValueError(
+                msg = (
                     "No discrete covariates found for stratified CRT. "
-                    "Provide stratification_column or use permutation_method='knn'.",
+                    "Provide stratification_column or use permutation_method='knn'."
+                )
+                raise ValueError(
+                    msg,
                 )
 
             strata = pd.DataFrame(strata_cols).T.agg("_".join, axis=1).to_numpy()
@@ -509,7 +536,8 @@ def find_spatially_patterned_genes(
 
     elif permutation_method == "knn":
         if covariates is None:
-            raise ValueError("kNN CRT requires covariates")
+            msg = "kNN CRT requires covariates"
+            raise ValueError(msg)
 
         perm_indices, knn_info = _build_permutation_indices_knn(
             covariates,
@@ -527,11 +555,12 @@ def find_spatially_patterned_genes(
         provenance["crt_knn_info"] = knn_info
 
     else:
+        msg = (
+            f"Unknown permutation_method: {permutation_method}. "
+            "Use 'stratified' or 'knn'."
+        )
         raise ValueError(
-            (
-                f"Unknown permutation_method: {permutation_method}. "
-                "Use 'stratified' or 'knn'."
-            )
+            msg,
         )
 
     logger.info("Permutation indices built: shape %s", perm_indices.shape)
@@ -585,16 +614,17 @@ def find_spatially_patterned_genes(
             rsp_curves_dict[gene] = perm_res["rsp_obs"]
 
         except BioRSPValidationError as e:
-            warnings.warn(f"Gene {gene} failed validation: {e}")
+            warnings.warn(f"Gene {gene} failed validation: {e}", stacklevel=2)
             continue
         except (ValueError, KeyError) as exc:
             logger.exception("Error processing gene %s", gene)
-            warnings.warn(f"Error processing gene {gene}: {exc}")
+            warnings.warn(f"Error processing gene {gene}: {exc}", stacklevel=2)
             continue
 
     if len(results_list) == 0:
+        msg = "No genes passed validation. Check expression levels and filters."
         raise ValueError(
-            "No genes passed validation. Check expression levels and filters.",
+            msg,
         )
 
     df_results = pd.DataFrame(results_list).set_index("gene")
@@ -622,7 +652,8 @@ def find_spatially_patterned_genes(
 
     if rsp_curves_dict:
         spatial_data.uns["biorsp"]["rsp_curves"] = pd.DataFrame(
-            rsp_curves_dict, index=grid_points
+            rsp_curves_dict,
+            index=grid_points,
         )
 
     logger.info(
@@ -631,7 +662,7 @@ def find_spatially_patterned_genes(
         significance_threshold,
         df_results["discovery"].sum(),
     )
-    logging.info(
+    logger.info(
         "Results stored in spatial_data.var['biorsp_*'] and spatial_data.uns['biorsp']",
     )
 
@@ -641,8 +672,8 @@ def find_spatially_patterned_genes(
 def analyze_single_gene(
     spatial_data: AnnData,
     gene_name: str,
-    reference_point: Union[int, Sequence[float], np.ndarray],
-    **analysis_settings: Any,
+    reference_point: int | Sequence[float] | np.ndarray,
+    **analysis_settings: object,
 ) -> pd.Series:
     """Analyze spatial pattern for one gene.
 
@@ -665,7 +696,9 @@ def analyze_single_gene(
     Examples:
         result = analyze_single_gene(data, "Gene_X", center_coords)
         logger.info("Pattern strength: %.3f", result['ARIA'])
-        logger.info("Significant: %s", result['discovery'])"""
+        logger.info("Significant: %s", result['discovery'])
+
+    """
     results: pd.DataFrame = find_spatially_patterned_genes(
         spatial_data,
         [gene_name],

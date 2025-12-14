@@ -1,6 +1,8 @@
 """Metrics for BioRSP analysis."""
 
-from typing import Any, Dict, Optional, Tuple
+from __future__ import annotations
+
+from typing import Any
 
 import numpy as np
 from sklearn.neighbors import NearestNeighbors
@@ -18,11 +20,12 @@ def compute_rsp_curve(
     bg_weights: np.ndarray,
     grid_points: np.ndarray,
     window_width_deg: float = 30.0,
-    r_min: Optional[float] = None,
-    r_max: Optional[float] = None,
+    r_min: float | None = None,
+    r_max: float | None = None,
     epsilon: float = 1e-6,
-    bin_map: Optional[Any] = None,
-) -> Dict[str, Any]:
+    bin_map: object | None = None,
+) -> dict[str, Any]:
+    """Compute the radial spatial pattern curve."""
     if bin_map is None:
         n_f_arr = compute_sector_counts_convolved(
             theta,
@@ -108,6 +111,7 @@ def compute_wasserstein_circular(
     q: np.ndarray,
     grid_points: np.ndarray,
 ) -> float:
+    """Compute the circular Wasserstein distance."""
     diff = p - q
     cumsum = np.cumsum(diff)
     center = np.median(cumsum)
@@ -116,21 +120,23 @@ def compute_wasserstein_circular(
 
 
 def compute_cra(
-    p_F: np.ndarray,
-    p_B: np.ndarray,
+    p_f: np.ndarray,
+    p_b: np.ndarray,
     grid_points: np.ndarray,
-) -> Tuple[float, float, float]:
-    w1 = compute_wasserstein_circular(p_F, p_B, grid_points)
-    d_dir, theta_dir = compute_directional_deviance(p_F, p_B, grid_points)
+) -> tuple[float, float, float]:
+    """Compute the circular radial asymmetry metrics."""
+    w1 = compute_wasserstein_circular(p_f, p_b, grid_points)
+    d_dir, theta_dir = compute_directional_deviance(p_f, p_b, grid_points)
     return w1, d_dir, theta_dir
 
 
 def compute_directional_deviance(
-    p_F: np.ndarray,
-    p_B: np.ndarray,
+    p_f: np.ndarray,
+    p_b: np.ndarray,
     grid_points: np.ndarray,
-) -> Tuple[float, float]:
-    diff = p_F - p_B
+) -> tuple[float, float]:
+    """Compute the directional deviance."""
+    diff = p_f - p_b
     r = np.sum(diff * np.exp(1j * grid_points))
     d_dir = np.abs(r)
     theta_dir = np.angle(r)
@@ -142,7 +148,7 @@ def _build_permutation_indices_stratified(
     n_perm: int,
     min_stratum_size: int = 20,
     seed: int = 0,
-) -> Tuple[np.ndarray, Dict[str, Any]]:
+) -> tuple[np.ndarray, dict[str, Any]]:
     rng = np.random.default_rng(seed)
     n_cells = len(strata)
 
@@ -189,10 +195,10 @@ def _build_permutation_indices_knn(
     covariates: np.ndarray,
     n_perm: int,
     k: int = 30,
-    stratify_by: Optional[np.ndarray] = None,
+    stratify_by: np.ndarray | None = None,
     min_stratum_size: int = 20,
     seed: int = 0,
-) -> Tuple[np.ndarray, Dict[str, Any]]:
+) -> tuple[np.ndarray, dict[str, Any]]:
     rng = np.random.default_rng(seed)
     n_cells = covariates.shape[0]
     covariates = np.asarray(covariates)
@@ -269,11 +275,11 @@ def run_conditional_permutation(
     bg_weights: np.ndarray,
     grid_points: np.ndarray,
     window_width_deg: float,
-    r_min: Optional[float],
-    r_max: Optional[float],
+    r_min: float | None,
+    r_max: float | None,
     perm_indices: np.ndarray,
-    bin_map: Optional[Any] = None,
-) -> Dict[str, Any]:
+    bin_map: object | None = None,
+) -> dict[str, Any]:
     """Run conditional permutation test and return summary statistics.
 
     This function computes observed and null CRA/W1 and directional deviance
@@ -338,16 +344,17 @@ def run_conditional_permutation(
 
 
 def compute_approximate_null_z_score(
-    theta,
-    weights,
-    bg_weights,
-    grid_points,
-    window_width_deg,
-    strata=None,
-):
+    theta: np.ndarray,
+    weights: np.ndarray,
+    bg_weights: np.ndarray,
+    grid_points: np.ndarray,
+    window_width_deg: float,
+    strata: np.ndarray | None = None,
+) -> float:
     """Compute Z-score for D_dir using CLT approximation.
 
-    This approximation assumes stratified permutation of labels."""
+    This approximation assumes stratified permutation of labels.
+    """
     n_grid = len(grid_points)
     delta = 2 * np.pi / n_grid
 

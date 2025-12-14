@@ -1,21 +1,26 @@
 """Stability and parameter robustness utilities for BioRSP.
 
 These functions test whether spatially patterned genes are reproducible
-across different coordinate systems and analysis parameters."""
+across different coordinate systems and analysis parameters.
+"""
 
 from __future__ import annotations
 
+import itertools
 import logging
 import warnings
-from typing import TYPE_CHECKING, Optional, Sequence
+from typing import TYPE_CHECKING, Sequence
 
 import numpy as np
-import pandas as pd                
+import pandas as pd
 
 if TYPE_CHECKING:
     from anndata import AnnData
 
-from scipy.stats import circstd, spearmanr                        
+from scipy.stats import circstd, spearmanr
+
+from .api import define_reference_point, find_spatially_patterned_genes
+from .validation import BioRSPValidationError
 
 logger = logging.getLogger(__name__)
 
@@ -31,7 +36,9 @@ def measure_angular_variation(angles_radians: np.ndarray) -> float:
     Returns
     -------
     float
-        Circular standard deviation (radians) or ``np.nan`` when insufficient data."""
+        Circular standard deviation (radians) or ``np.nan`` when insufficient data.
+
+    """
     if len(angles_radians) < MIN_SAMPLES_FOR_STATS:
         return np.nan
 
@@ -45,7 +52,7 @@ def test_consistency_across_embeddings(
     reference_method: str = "geometric_median",
     min_consistency_score: float = 0.7,
     max_variation_threshold: float = 0.3,
-    max_directional_spread: float = np.pi / 4,              
+    max_directional_spread: float = np.pi / 4,
     analysis_settings: dict | None = None,
 ) -> pd.DataFrame:
     """Check if gene patterns are consistent across different coordinate systems.
@@ -80,10 +87,9 @@ def test_consistency_across_embeddings(
             - pattern_strength_cv (variation)
             - directional_spread (focus of pattern direction)
             - consistency_score (similarity across coordinate systems)
-            - passes_stability_test (overall result)"""
-    from .api import define_reference_point, find_spatially_patterned_genes
-    from .validation import BioRSPValidationError
+            - passes_stability_test (overall result)
 
+    """
     if len(coordinate_systems) < MIN_VALID_SYSTEMS:
         msg = (
             f"Multi-embedding stability requires at least {MIN_VALID_SYSTEMS} "
@@ -113,7 +119,7 @@ def test_consistency_across_embeddings(
                 genes_to_test,
                 reference_point=reference_point,
                 coordinate_system=coord_sys,
-                num_permutations=0,                                       
+                num_permutations=0,
                 **(analysis_settings or {}),
             )
 
@@ -179,10 +185,10 @@ def test_parameter_robustness(
     genes_to_test: list[str],
     reference_point: int | Sequence[float] | np.ndarray,
     coordinate_system: str,
-    angular_resolution_grid: Optional[list[float]] = None,
-    smoothing_window_grid: Optional[list[float]] = None,
-    radius_range_grid: Optional[list[tuple]] = None,
-    neighborhood_size_grid: Optional[list[int]] = None,
+    angular_resolution_grid: list[float] | None = None,
+    smoothing_window_grid: list[float] | None = None,
+    radius_range_grid: list[tuple] | None = None,
+    neighborhood_size_grid: list[int] | None = None,
     max_variation_threshold: float = 0.3,
     analysis_settings: dict | None = None,
 ) -> pd.DataFrame:
@@ -216,10 +222,9 @@ def test_parameter_robustness(
             - pattern_strength_mean
             - pattern_strength_std
             - pattern_strength_cv (variation)
-            - passes_robustness_test (overall result)"""
-    from .api import find_spatially_patterned_genes
-    from .validation import BioRSPValidationError
+            - passes_robustness_test (overall result)
 
+    """
     if angular_resolution_grid is None:
         angular_resolution_grid = [3.0, 5.0, 10.0]
     if smoothing_window_grid is None:
@@ -228,8 +233,6 @@ def test_parameter_robustness(
         radius_range_grid = [(0.1, 0.9), (0.2, 0.8)]
     if neighborhood_size_grid is None:
         neighborhood_size_grid = [20, 30, 50]
-
-    import itertools
 
     parameter_combinations = [
         {
@@ -260,7 +263,7 @@ def test_parameter_robustness(
                 genes_to_test,
                 reference_point=reference_point,
                 coordinate_system=coordinate_system,
-                num_permutations=0,                                         
+                num_permutations=0,
                 **config,
                 **(analysis_settings or {}),
             )
@@ -272,7 +275,7 @@ def test_parameter_robustness(
         except ValueError:
             logger.exception("ValueError running parameter config")
             continue
-        except (RuntimeError, KeyError, TypeError):                            
+        except (RuntimeError, KeyError, TypeError):
             logger.exception("Unexpected error in parameter grid")
             continue
 
@@ -334,7 +337,6 @@ def comprehensive_stability_check(
     analysis_settings: dict | None = None,
 ) -> pd.DataFrame:
     """Complete stability analysis combining coordinate systems and.
-    parameter sensitivity.
 
     This function performs a thorough evaluation of gene pattern stability by
     testing consistency across different spatial representations and
@@ -347,13 +349,13 @@ def comprehensive_stability_check(
             Need at least 2 coordinate systems.
         reference_method: Method for center point.
         run_parameter_sensitivity: If True, test sensitivity to parameters.
-        **analysis_settings: Additional settings passed to the API function.
+        analysis_settings: Additional settings passed to the API function.
 
     Returns:
         pd.DataFrame: Complete stability report. The final column
-        'passes_all_stability_tests' contains a boolean per gene."""
-    from .api import define_reference_point
+        'passes_all_stability_tests' contains a boolean per gene.
 
+    """
     coord_stability = test_consistency_across_embeddings(
         spatial_data,
         genes_to_test,
@@ -431,10 +433,9 @@ def validate_spatial_representations(
         num_permutations: Number of permutations (use 0 for effect sizes only).
 
     Returns:
-        pd.DataFrame: Stability metrics for each gene."""
-    from .api import define_reference_point, find_spatially_patterned_genes
-    from .validation import BioRSPValidationError
+        pd.DataFrame: Stability metrics for each gene.
 
+    """
     results_by_system = {}
 
     if coordinate_systems is None:
@@ -492,11 +493,11 @@ def validate_spatial_representations(
             pattern_corrs.append(corr)
 
     for gene in genes_to_test:
-        pattern_vals = []
-
-        for k in system_keys:
-            if gene in results_by_system[k].index:
-                pattern_vals.append(results_by_system[k].loc[gene, "pattern_strength"])
+        pattern_vals = [
+            results_by_system[k].loc[gene, "pattern_strength"]
+            for k in system_keys
+            if gene in results_by_system[k].index
+        ]
 
         if len(pattern_vals) < MIN_SAMPLES_FOR_STATS:
             continue

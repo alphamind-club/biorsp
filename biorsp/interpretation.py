@@ -1,17 +1,27 @@
 """Interpretation utilities for BioRSP."""
 
-from typing import Optional, Sequence
+from __future__ import annotations
+
+from typing import TYPE_CHECKING, Sequence
 
 import numpy as np
 import pandas as pd
-from anndata import AnnData
+from scipy.ndimage import label
+
+if TYPE_CHECKING:
+    from anndata import AnnData
+
+try:
+    import gseapy as gp
+except ImportError:
+    gp = None
 
 from .geometry import cartesian_to_polar
 
 
 def get_cell_angles(
     adata: AnnData,
-    vantage_point: Optional[Sequence[float] | int],
+    vantage_point: Sequence[float] | int | None,
     embedding_key: str = "X_umap",
 ) -> np.ndarray:
     """Compute angles for all cells relative to a vantage point.
@@ -28,7 +38,9 @@ def get_cell_angles(
     Returns
     -------
     np.ndarray
-        Angle values in radians for each cell."""
+        Angle values in radians for each cell.
+
+    """
     if isinstance(vantage_point, (int, np.integer)):
         vantage_coords = adata.obsm[embedding_key][vantage_point]
     else:
@@ -46,13 +58,16 @@ def identify_peak_sectors(
 ) -> list:
     """Identify contiguous angular sectors where ``gene`` is enriched.
 
-    Returns a list of ``(start_angle, end_angle)`` tuples in radians."""
+    Returns a list of ``(start_angle, end_angle)`` tuples in radians.
+    """
     if "biorsp" not in adata.uns or "rsp_curves" not in adata.uns["biorsp"]:
-        raise ValueError("Run find_spatially_patterned_genes first.")
+        msg = "Run find_spatially_patterned_genes first."
+        raise ValueError(msg)
 
     rsp_df = adata.uns["biorsp"]["rsp_curves"]
     if gene not in rsp_df.columns:
-        raise ValueError(f"Gene {gene} not found in results.")
+        msg = f"Gene {gene} not found in results."
+        raise ValueError(msg)
 
     angles = rsp_df.index.to_numpy()
     values = rsp_df[gene].to_numpy()
@@ -63,8 +78,6 @@ def identify_peak_sectors(
 
     mask_ext = np.concatenate([mask, mask])
     angles_ext = np.concatenate([angles, angles + 2 * np.pi])
-
-    from scipy.ndimage import label
 
     labeled, n_features = label(mask_ext)
 
@@ -88,7 +101,12 @@ def identify_peak_sectors(
     return sectors
 
 
-def correlate_sectors_with_metadata(adata, gene, obs_key, sectors=None):
+def correlate_sectors_with_metadata(
+    adata: AnnData,
+    gene: str,
+    obs_key: str,
+    sectors: list[tuple] | None = None,
+) -> pd.DataFrame | None:
     """Check which metadata categories are enriched in the peak sectors."""
     if sectors is None:
         sectors = identify_peak_sectors(adata, gene)
@@ -122,10 +140,7 @@ def correlate_sectors_with_metadata(adata, gene, obs_key, sectors=None):
         c = np.sum(in_sector & (~is_cat))
         d = np.sum((~in_sector) & (~is_cat))
 
-        if b * c == 0:
-            or_val = np.inf
-        else:
-            or_val = (a * d) / (b * c)
+        or_val = np.inf if b * c == 0 else a * d / (b * c)
 
         results.append(
             {
@@ -140,9 +155,15 @@ def correlate_sectors_with_metadata(adata, gene, obs_key, sectors=None):
     return pd.DataFrame(results).sort_values("enrichment_ratio", ascending=False)
 
 
-def check_pathway_enrichment(gene_list, database="GO_Biological_Process_2021"):
-    """Placeholder for pathway enrichment analysis.
-    In a real scenario, this would query Enrichr or use gseapy."""
+def check_pathway_enrichment(
+    gene_list: list[str],
+    database: str = "GO_Biological_Process_2021",
+    seed: int | None = None,
+) -> pd.DataFrame:
+    """Mock pathway enrichment analysis.
+
+    In a real scenario, this would query Enrichr or use gseapy.
+    """
     mock_pathways = [
         "Cell Cycle (GO:0007049)",
         "Mitotic Spindle Organization (GO:0007052)",
@@ -151,34 +172,34 @@ def check_pathway_enrichment(gene_list, database="GO_Biological_Process_2021"):
     ]
 
     results = []
-    import random
+    rng = np.random.default_rng(seed)
 
-    selected = random.sample(mock_pathways, k=min(len(gene_list), 2))
+    selected = rng.choice(mock_pathways, size=min(len(gene_list), 2), replace=False)
 
-    for p in selected:
-        results.append(
-            {
-                "Term": p,
-                "Adjusted P-value": random.uniform(1e-5, 0.05),
-                "Overlap": f"{random.randint(3, 10)}/{random.randint(50, 200)}",
-                "Database": database,
-            },
-        )
+    results = [
+        {
+            "Term": p,
+            "Adjusted P-value": rng.uniform(1e-5, 0.05),
+            "Overlap": f"{rng.integers(3, 11)}/{rng.integers(50, 201)}",
+            "Database": database,
+        }
+        for p in selected
+    ]
 
     return pd.DataFrame(results)
 
 
-def generate_interpretation_report(adata, genes, obs_keys):
+def generate_interpretation_report(
+    adata: AnnData,
+    genes: list[str],
+    obs_keys: list[str],
+) -> pd.DataFrame:
     """Generate a summary report for a list of genes."""
     report = []
 
     for gene in genes:
         if gene in adata.var_names:
-            cra = (
-                adata.var.loc[gene, "ARIA"]
-                if "ARIA" in adata.var.columns
-                else np.nan
-            )
+            cra = adata.var.loc[gene, "ARIA"] if "ARIA" in adata.var.columns else np.nan
             a1 = adata.var.loc[gene, "A1"] if "A1" in adata.var.columns else np.nan
             a2 = adata.var.loc[gene, "A2"] if "A2" in adata.var.columns else np.nan
             theta_hat = (
@@ -221,7 +242,12 @@ def generate_interpretation_report(adata, genes, obs_keys):
     return pd.DataFrame(report)
 
 
-def annotate_direction(adata, angle, obs_key, window_deg=30):
+def annotate_direction(
+    adata: AnnData,
+    angle: float,
+    obs_key: str,
+    window_deg: float = 30,
+) -> pd.DataFrame | None:
     """Annotate a specific direction with enriched metadata.
 
     Parameters
@@ -238,7 +264,9 @@ def annotate_direction(adata, angle, obs_key, window_deg=30):
     Returns
     -------
     pd.DataFrame
-        Enrichment results for categories in obs_key."""
+        Enrichment results for categories in obs_key.
+
+    """
     half_width = np.deg2rad(window_deg / 2)
     start = angle - half_width
     end = angle + half_width
@@ -249,17 +277,22 @@ def annotate_direction(adata, angle, obs_key, window_deg=30):
     sector = [(start, end)]
 
     if "biorsp" not in adata.uns or "params" not in adata.uns["biorsp"]:
-        raise ValueError(
-            "Run find_spatially_patterned_genes first to set vantage point parameters.",
-        )
+        msg = "Run find_spatially_patterned_genes first to set parameters."
+        raise ValueError(msg)
 
     return correlate_sectors_with_metadata(adata, "dummy_gene", obs_key, sectors=sector)
 
 
-def compute_sector_enrichment(adata, gene, obs_keys, sectors=None):
+def compute_sector_enrichment(
+    adata: AnnData,
+    gene: str,
+    obs_keys: str | list[str],
+    sectors: list[tuple] | None = None,
+) -> dict[str, pd.DataFrame]:
     """Compute enrichment of metadata categories in peak sectors.
 
-    Returns a dictionary of DataFrames, one for each obs_key."""
+    Returns a dictionary of DataFrames, one for each obs_key.
+    """
     if isinstance(obs_keys, str):
         obs_keys = [obs_keys]
 
@@ -276,17 +309,14 @@ def compute_sector_enrichment(adata, gene, obs_keys, sectors=None):
 
 
 def run_pathway_enrichment(
-    genes,
-    database="GO_Biological_Process_2021",
-    organism="Human",
-):
+    genes: list[str] | pd.Series | np.ndarray,
+    database: str = "GO_Biological_Process_2021",
+    organism: str = "Human",
+) -> pd.DataFrame:
     """Run pathway enrichment analysis using gseapy."""
-    try:
-        import gseapy as gp
-    except ImportError:
-        raise ImportError(
-            "gseapy is required for pathway enrichment. Please install it.",
-        )
+    if gp is None:
+        msg = "gseapy is required for pathway enrichment. Please install it."
+        raise ImportError(msg)
 
     if isinstance(genes, (pd.Series, np.ndarray)):
         genes = genes.tolist()

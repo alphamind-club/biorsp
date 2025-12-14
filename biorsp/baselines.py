@@ -1,14 +1,13 @@
 """Baseline analyses for spatial gene expression."""
 
-import logging
+from __future__ import annotations
 
-logger = logging.getLogger(__name__)
-from typing import Iterable, Optional
+import logging
+from typing import TYPE_CHECKING, Iterable
 
 import numpy as np
 import pandas as pd
 import scanpy as sc
-from anndata import AnnData
 from scipy.sparse import issparse
 from scipy.stats import f
 from sklearn.linear_model import LinearRegression
@@ -16,18 +15,24 @@ from sklearn.neighbors import NearestNeighbors
 
 from .geometry import cartesian_to_polar
 
+logger = logging.getLogger(__name__)
+
+if TYPE_CHECKING:
+    from anndata import AnnData
+
 EPSILON = 1e-9
 
 
 def compute_morans_i(
     adata: AnnData,
-    genes: Optional[Iterable[str]] = None,
+    genes: Iterable[str] | None = None,
     embedding_key: str = "X_umap",
     k: int = 30,
 ) -> pd.Series:
     """Compute Moran's I for spatial autocorrelation on the embedding graph.
 
-    Returns a Series indexed by :class:`AnnData.var_names`."""
+    Returns a Series indexed by :class:`AnnData.var_names`.
+    """
     if genes is None:
         genes = adata.var_names
 
@@ -78,7 +83,8 @@ def compute_gradient_magnitude(
     """Estimate gradient magnitude of expression on the embedding.
 
     Uses local linear fits over neighbors to estimate per-cell gradient
-    magnitudes and returns the mean per gene."""
+    magnitudes and returns the mean per gene.
+    """
     coords = adata.obsm[embedding_key]
     x = adata.X
     if issparse(x):
@@ -114,7 +120,9 @@ def compute_neighborhood_enrichment(
     k: int = 30,
 ) -> pd.Series:
     """Compute enrichment of expression in local neighborhoods vs global background.
-    Returns the maximum enrichment score observed across all neighborhoods."""
+
+    Returns the maximum enrichment score observed across all neighborhoods.
+    """
     if "neighbors" not in adata.uns:
         sc.pp.neighbors(adata, use_rep=embedding_key, n_neighbors=k)
 
@@ -157,9 +165,9 @@ def run_baselines(
     logger.info("Computing Neighborhood Enrichment...")
     enrich: pd.Series = compute_neighborhood_enrichment(adata, genes, embedding_key)
 
-    df = pd.DataFrame({"Morans_I": morans, "Gradient_Mag": grads, "Nb_Enrich": enrich})
-
-    return df
+    return pd.DataFrame(
+        {"Morans_I": morans, "Gradient_Mag": grads, "Nb_Enrich": enrich},
+    )
 
 
 def compute_morans_i_residualized(
@@ -210,12 +218,14 @@ def compute_morans_i_residualized(
 def compute_circular_regression(
     adata: AnnData,
     genes: Iterable[str],
-    covariates: Optional[np.ndarray] = None,
+    covariates: np.ndarray | None = None,
     embedding_key: str = "X_umap",
-    vantage_point: Optional[tuple | list | np.ndarray | int] = None,
+    vantage_point: tuple | list | np.ndarray | int | None = None,
 ) -> pd.Series:
     """Fit GLM: E ~ sin(theta) + cos(theta) + Z, LRT vs E ~ Z.
-    Returns p-value of the F-test."""
+
+    Returns p-value of the F-test.
+    """
     if vantage_point is None:
         if "biorsp" in adata.uns and "params" in adata.uns["biorsp"]:
             vantage_point = adata.uns["biorsp"]["params"]["vantage_point"]
@@ -228,10 +238,7 @@ def compute_circular_regression(
     sin_t = np.sin(theta)
     cos_t = np.cos(theta)
 
-    if covariates is None:
-        z = np.zeros((adata.n_obs, 0))
-    else:
-        z = np.asarray(covariates)
+    z = np.zeros((adata.n_obs, 0)) if covariates is None else np.asarray(covariates)
 
     x_full = np.column_stack([sin_t, cos_t, z])
     x_null = z
@@ -252,7 +259,7 @@ def compute_circular_regression(
         rss_null = np.sum((y - reg_null.predict(x_null)) ** 2, axis=0)
         df_null = adata.n_obs - x_null.shape[1] - 1
     else:
-        rss_null = np.sum((Y - np.mean(Y, axis=0)) ** 2, axis=0)
+        rss_null = np.sum((y - np.mean(y, axis=0)) ** 2, axis=0)
         df_null = adata.n_obs - 1
 
     num = (rss_null - rss_full) / (df_null - df_full)
