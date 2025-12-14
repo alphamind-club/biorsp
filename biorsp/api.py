@@ -1,78 +1,158 @@
+"""BioRSP API module for radial spatial pattern analysis."""
+
+import hashlib
+import logging
+
+logger = logging.getLogger(__name__)
+import sys
+import warnings
+from typing import Any, List, Optional, Sequence, Union, cast
+
 import numpy as np
 import pandas as pd
+from anndata import AnnData
 from tqdm import tqdm
-from typing import Any
 
 from .geometry import (
+    bin_cells_sparse,
+    bootstrap_vantage,
     cartesian_to_polar,
     compute_geodesic_distances,
     compute_local_distortion,
     define_angular_grid,
 )
 from .metrics import (
-    compute_a1,
-    compute_a2,
-    compute_directional_deviance,
-    compute_rsp_curve,
-    run_stratified_permutation,
+    _build_permutation_indices_knn,
+    _build_permutation_indices_stratified,
+    run_conditional_permutation,
 )
-from .preprocessing import compute_gene_weights
+from .preprocessing import build_covariate_matrix, compute_gene_weights
+from .validation import (
+    BioRSPValidationError,
+    compute_fdr_bh,
+    validate_annulus_cells,
+    validate_covariates,
+    validate_effective_mass,
+    validate_embedding_distortion,
+    validate_minimum_cells,
+    validate_strata_sizes,
+    validate_vantage_stability,
+)
+
+__version__ = "3.0.0-dev"
 
 
-def set_vantage(
-    adata,
-    key="X_umap",
-    mode="coordinates",
-    x=None,
-    y=None,
-    cluster_key=None,
-    cluster_id=None,
-    pseudotime_key=None,
-    density_key=None,
-):
-    """
-    Define vantage point coordinates or index.
+def get_code_version() -> str:
+    """Get a unique identifier for the current BioRSP code version for reproducibility.
+
+    This function creates a short hash of the source code to help track which
+    version of the analysis was used for your results.
 
     Returns
     -------
-    vantage : np.ndarray or int
-        Coordinates (if mode='coordinates' or 'cluster_center' or 'density_peak')
-        or Index (if mode='graph_node' or 'pseudotime_root')
-    """
-    if mode == "coordinates":
-        if x is None or y is None:
-            raise ValueError("x and y must be provided for mode='coordinates'")
-        return np.array([x, y])
+    str
+        Short hash string representing the current code version."""
+    import inspect
 
-    elif mode == "cluster_center":
-        if cluster_key is None or cluster_id is None:
+    source = inspect.getsource(sys.modules[__name__])
+    return hashlib.md5(source.encode()).hexdigest()[:8]
+
+
+def define_reference_point(
+    spatial_data: AnnData,
+    coordinate_system: str = "X_umap",
+    method: str = "coordinates",
+    x_coordinate: Optional[float] = None,
+    y_coordinate: Optional[float] = None,
+    cluster_column: Optional[str] = None,
+    cluster_name: Optional[str] = None,
+    trajectory_column: Optional[str] = None,
+) -> np.ndarray:
+    """Choose a reference point (center) for radial spatial analysis.
+
+    This function determines where to place the "center" of your analysis. All
+    spatial patterns will be measured relative to this point.
+
+    Args:
+        spatial_data: AnnData object containing spatial coordinates and gene expression.
+        coordinate_system: Name of the coordinate system in spatial_data.obsm to use.
+        method: How to choose the reference point. Options are:
+            - 'coordinates': Use specific x,y coordinates you provide
+            - 'cluster_center': Center of a specific cell cluster
+            - 'density_peak': Location with highest cell density
+            - 'geometric_median': Balanced center of all cells
+            - 'trajectory_start': Cell with earliest developmental time
+        x_coordinate: X position when method='coordinates'.
+        y_coordinate: Y position when method='coordinates'.
+        cluster_column: Column name for cluster labels when method='cluster_center'.
+        cluster_name: Specific cluster name when method='cluster_center'.
+        trajectory_column: Column name for developmental time when
+            method='trajectory_start'.
+
+    Returns:
+        Reference point coordinates as a numpy array.
+
+    Raises:
+        ValueError: If required parameters for the chosen method are not provided.
+
+    Examples:
+        center = define_reference_point(
+            data,
+            method="coordinates",
+            x_coordinate=5.0,
+            y_coordinate=-2.0,
+        )
+
+        center = define_reference_point(
+            data,
+            method="cluster_center",
+            cluster_column="cell_type",
+            cluster_name="stem_cells",
+        )"""
+    if method == "coordinates":
+        if x_coordinate is None or y_coordinate is None:
             raise ValueError(
-                "cluster_key and cluster_id must be provided for mode='cluster_center'"
+                "x_coordinate and y_coordinate must be provided for "
+                "method='coordinates'",
+            )
+        return np.array([x_coordinate, y_coordinate])
+
+    if method == "cluster_center":
+        if cluster_column is None or cluster_name is None:
+            raise ValueError(
+                "cluster_column and cluster_name must be provided for "
+                "method='cluster_center'",
             )
 
-        if cluster_key not in adata.obs:
-            raise ValueError(f"Cluster key {cluster_key} not found in adata.obs")
+        if cluster_column not in spatial_data.obs:
+            raise ValueError(
+                (f"Cluster column {cluster_column} not found " "in spatial_data.obs")
+            )
 
-        mask = adata.obs[cluster_key] == cluster_id
+        mask = spatial_data.obs[cluster_column] == cluster_name
         if np.sum(mask) == 0:
-            raise ValueError(f"Cluster {cluster_id} not found in {cluster_key}")
+            raise ValueError(f"Cluster {cluster_name} not found in {cluster_column}")
 
-        coords = adata.obsm[key][mask]
+        coords = spatial_data.obsm[coordinate_system][mask]
         centroid = np.mean(coords, axis=0)
         return centroid
 
-    elif mode == "density_peak":
-        coords = adata.obsm[key]
-        H, xedges, yedges = np.histogram2d(coords[:, 0], coords[:, 1], bins=50)
-        idx = np.unravel_index(np.argmax(H), H.shape)
+    if method == "density_peak":
+        coords = spatial_data.obsm[coordinate_system]
+        h, xedges, yedges = np.histogram2d(coords[:, 0], coords[:, 1], bins=50)
+        idx = np.unravel_index(np.argmax(h), h.shape)
         x_peak = (xedges[idx[0]] + xedges[idx[0] + 1]) / 2
         y_peak = (yedges[idx[1]] + yedges[idx[1] + 1]) / 2
         return np.array([x_peak, y_peak])
 
-    elif mode == "geometric_median":
-        coords = adata.obsm[key]
+    if method == "geometric_median":
+        coords = spatial_data.obsm[coordinate_system]
 
-        def geometric_median(points, eps=1e-5, max_iter=100):
+        def geometric_median(
+            points: np.ndarray,
+            eps: float = 1e-5,
+            max_iter: int = 100,
+        ) -> np.ndarray:
             points = np.array(points)
             median = np.mean(points, axis=0)
             for _ in range(max_iter):
@@ -89,184 +169,507 @@ def set_vantage(
 
         return geometric_median(coords)
 
-    elif mode == "pseudotime_root":
-        if pseudotime_key is None:
+    if method == "trajectory_start":
+        if trajectory_column is None:
             raise ValueError(
-                "pseudotime_key must be provided for mode='pseudotime_root'"
+                "trajectory_column must be provided for method='trajectory_start'",
             )
 
-        pt = adata.obs[pseudotime_key].values
-        root_idx = np.argmin(pt)
-        return adata.obsm[key][root_idx]
+        trajectory_values = spatial_data.obs[trajectory_column].to_numpy()
+        earliest_idx = np.argmin(trajectory_values)
+        return spatial_data.obsm[coordinate_system][earliest_idx]
 
-    else:
-        raise ValueError(f"Unknown mode: {mode}")
+    raise ValueError(
+        (
+            f"Unknown method: {method}. Choose from: coordinates, cluster_center, "
+            "density_peak, geometric_median, trajectory_start"
+        )
+    )
 
 
-def scan_genes(
-    adata,
-    genes,
-    vantage_point,
-    embedding_key="X_umap",
-    use_graph=False,
-    graph_key="connectivities",
-    method="log_normalized",
-    q=0.9,
-    layer=None,
-    delta_phi_deg=None,
-    window_width_deg=None,
-    r_min=None,
-    r_max=None,
-    stratify_key=None,
-    n_perm=100,
-    check_distortion=True,
+def find_spatially_patterned_genes(
+    spatial_data: AnnData,
+    genes_to_test: List[str],
+    reference_point: Union[int, Sequence[float], np.ndarray],
+    coordinate_system: str = "X_umap",
+    condition_column: Optional[str] = None,
+    condition_value: Optional[str] = None,
+    inner_radius_percentile: float = 0.1,
+    outer_radius_percentile: float = 0.9,
+    *,
+    use_graph_distances: bool = False,
+    graph_distances_key: str = "connectivities",
+    expression_method: str = "log_normalized",
+    expression_threshold_percentile: float = 0.9,
+    expression_layer: Optional[str] = None,
+    angle_resolution_degrees: float = 5.0,
+    smoothing_window_degrees: float = 30.0,
+    confounding_factors: Optional[List[str]] = None,
+    require_sample_info: bool = True,
+    require_batch_info: bool = True,
+    require_depth_info: bool = True,
+    allow_uncalibrated_analysis: bool = False,
+    num_permutations: int = 500,
+    permutation_method: str = "stratified",
+    stratification_column: Optional[str] = None,
+    neighbors_for_matching: int = 30,
+    min_group_size: int = 20,
+    min_cells_required: int = 200,
+    min_expression_mass: float = 10.0,
+    min_cells_in_analysis_region: int = 100,
+    allow_exploratory_mode: bool = False,
+    check_spatial_distortion: bool = True,
+    min_distortion_correlation: float = 0.5,
+    reference_point_stability_tests: int = 25,
+    stability_threshold_fraction: float = 0.05,
+    significance_threshold: float = 0.05,
+    random_seed: int = 0,
 ) -> pd.DataFrame:
-    """
-    Batch scan multiple genes with confounder-robust inference and distortion checks.
-    """
-    if delta_phi_deg is None:
-        delta_phi_deg = 5
-    if window_width_deg is None:
-        window_width_deg = 30
+    """Find genes that show spatial patterns radiating from a center point.
 
-    coords = adata.obsm[embedding_key]
+    This is the main function for discovering genes with radial spatial patterns.
+    It uses advanced statistical methods to account for technical biases and
+    provides reliable results for scientific publications.
 
-    vantage_idx = None
-    vantage_coords = None
+    Args:
+        spatial_data: AnnData object containing spatial coordinates and
+            gene expression data.
+        genes_to_test: List of gene names to analyze for spatial patterns.
+        reference_point: Center point for analysis. Either coordinates (array)
+            or a global cell index (integer).
+        coordinate_system: Name of the 2D coordinate system in spatial_data.obsm.
+        condition_column: Optional column in spatial_data.obs used to select cells.
+        condition_value: Value in condition_column that selects cells for analysis.
 
-    if isinstance(vantage_point, (int, np.integer)):
-        vantage_idx = vantage_point
-        vantage_coords = coords[vantage_idx]
+        inner_radius_percentile: Inner boundary as percentile of distances from center
+            (0.1 = 10th percentile).
+        outer_radius_percentile: Outer boundary as percentile of distances from center
+            (0.9 = 90th percentile).
+        use_graph_distances: Use graph-based distances instead of
+            straight-line distances.
+        graph_distances_key: Name of distance matrix in spatial_data.obsp.
+
+        expression_method: How to process gene expression.
+            ('log_normalized' recommended)
+        expression_threshold_percentile: Expression threshold percentile for analysis.
+        expression_layer: Optional data layer containing expression values.
+
+        angle_resolution_degrees: How finely to divide the circle.
+            Smaller values give finer resolution.
+        smoothing_window_degrees: Width of smoothing window for detection.
+
+        confounding_factors: List of column names for technical factors.
+            Examples: sample, batch, sequencing depth columns.
+        require_sample_info: Require sample information for confounder control.
+        require_batch_info: Require batch information for confounder control.
+        require_depth_info: Require sequencing depth information (e.g., n_counts).
+        allow_uncalibrated_analysis: If True, run without full confounder checks.
+
+        num_permutations: Number of random permutations for statistical testing.
+            Higher values increase accuracy.
+        permutation_method: Method for creating matched random samples.
+            Options: 'stratified' or 'knn'.
+        stratification_column: Column name for grouping similar cells during testing.
+        neighbors_for_matching: Number of similar cells to match for 'knn'.
+        min_group_size: Minimum cells per group required for statistics.
+
+        min_cells_required: Minimum total cells needed for analysis.
+        min_expression_mass: Minimum gene expression level required.
+        min_cells_in_analysis_region: Minimum cells in the analysis distance range.
+        allow_exploratory_mode: Allow analysis with relaxed quality controls.
+
+        check_spatial_distortion: Verify that spatial coordinates are reliable.
+        min_distortion_correlation: Minimum correlation allowed for spatial coordinates.
+        reference_point_stability_tests: Number of tests for center point stability.
+        stability_threshold_fraction: Threshold for acceptable center point variation.
+
+        significance_threshold: Statistical significance level (e.g., 0.05 for 5%).
+
+        random_seed: Random number seed for reproducible results.
+
+    Returns:
+        pd.DataFrame: Analysis results with gene names as index and columns including:
+            - ARIA: Pattern strength statistic
+            - p_CRA: Statistical significance (uncorrected)
+            - q_CRA: Statistical significance (corrected for multiple testing)
+            - discovery: Whether gene shows significant spatial pattern
+
+    Examples:
+        results = find_spatially_patterned_genes(
+            spatial_data=my_data,
+            genes_to_test=['Gene1', 'Gene2', 'Gene3'],
+            reference_point=center_coords,
+            confounding_factors=['sample', 'batch']
+        )
+
+        results = find_spatially_patterned_genes(
+            spatial_data=my_data,
+            genes_to_test=all_genes,
+            reference_point=center_coords,
+            coordinate_system='X_pca',
+            inner_radius_percentile=0.2,
+            outer_radius_percentile=0.8,
+            num_permutations=1000,
+            confounding_factors=['sample', 'batch', 'sequencing_depth']
+        )"""
+    analysis_settings = {
+        "version": __version__,
+        "version_hash": get_code_version(),
+        "coordinate_system": coordinate_system,
+        "condition_column": condition_column,
+        "condition_value": condition_value,
+        "permutation_method": permutation_method,
+        "num_permutations": num_permutations,
+        "random_seed": random_seed,
+        "timestamp": pd.Timestamp.now().isoformat(),
+    }
+
+    if condition_column is not None:
+        if condition_column not in spatial_data.obs:
+            raise ValueError(
+                f"Condition column '{condition_column}' not found in spatial_data.obs",
+            )
+
+        condition_mask = spatial_data.obs[condition_column] == condition_value
+        subset_data = spatial_data[condition_mask].copy()
+        analysis_settings["cells_in_condition"] = condition_mask.sum()
+
+        if subset_data.n_obs == 0:
+            raise ValueError(
+                f"No cells found with {condition_column} = {condition_value}",
+            )
     else:
-        vantage_coords = np.asarray(vantage_point)
-        if use_graph or check_distortion:
-            from sklearn.neighbors import NearestNeighbors
+        subset_data = spatial_data
+        analysis_settings["total_cells"] = spatial_data.n_obs
 
-            nbrs: NearestNeighbors = NearestNeighbors(n_neighbors=1).fit(coords)
-            _, indices = nbrs.kneighbors([vantage_coords])
-            vantage_idx = indices[0][0]
+    validate_minimum_cells(
+        subset_data.n_obs,
+        min_cells=min_cells_required,
+        exploratory_min=50,
+        allow_exploratory=allow_exploratory_mode,
+    )
 
-    r_eucl, theta = cartesian_to_polar(coords, vantage_coords)
+    validate_covariates(
+        subset_data,
+        confounding_factors,
+        require_sample=require_sample_info,
+        require_batch=require_batch_info,
+        require_depth=require_depth_info,
+        allow_uncalibrated=allow_uncalibrated_analysis,
+    )
+
+    if coordinate_system not in subset_data.obsm:
+        raise ValueError(
+            f"Coordinate system '{coordinate_system}' not found in subset_data.obsm",
+        )
+
+    spatial_coords = subset_data.obsm[coordinate_system][
+        :,
+        :2,
+    ]
+
+    if isinstance(reference_point, (int, np.integer)):
+        reference_index = int(reference_point)
+        if reference_index >= len(spatial_coords):
+            raise ValueError(f"Reference index {reference_index} out of bounds")
+        reference_coords = spatial_coords[reference_index]
+    else:
+        reference_coords = np.asarray(reference_point)
+        from sklearn.neighbors import NearestNeighbors
+
+        coord_matcher = NearestNeighbors(n_neighbors=1).fit(spatial_coords)
+        _, indices = coord_matcher.kneighbors([reference_coords])
+        reference_index = int(indices[0][0])
+
+    analysis_settings["reference_coords"] = reference_coords.tolist()
+    analysis_settings["reference_index"] = reference_index
+
+    provenance = analysis_settings.copy()
+
+    _, vss, _ = bootstrap_vantage(
+        spatial_coords,
+        n_boot=reference_point_stability_tests,
+        frac=0.8,
+        seed=random_seed,
+    )
+    emb_diam = np.max(
+        np.linalg.norm(spatial_coords - spatial_coords.mean(axis=0), axis=1),
+    )
+
+    validate_vantage_stability(
+        vss,
+        emb_diam,
+        threshold_frac=stability_threshold_fraction,
+    )
+
+    provenance["vss"] = vss
+    provenance["embedding_diameter"] = emb_diam
+
+    r_eucl, theta = cartesian_to_polar(spatial_coords, reference_coords)
 
     r_geo = None
-    if use_graph or check_distortion:
-        if graph_key not in adata.obsp:
-            print(f"Warning: {graph_key} not found. Skipping graph-based operations.")
-            use_graph = False
-            check_distortion = False
+    if use_graph_distances or check_spatial_distortion:
+        if graph_distances_key not in subset_data.obsp:
+            if use_graph_distances:
+                raise ValueError(
+                    f"Graph '{graph_distances_key}' not found "
+                    "but use_graph_distances is True",
+                )
+            warnings.warn(
+                f"Graph '{graph_distances_key}' not found; skipping distortion check",
+            )
+            check_spatial_distortion = False
         else:
-            adj = adata.obsp[graph_key]
-            r_geo = compute_geodesic_distances(adj, vantage_idx)
+            adj = subset_data.obsp[graph_distances_key]
+            r_geo = compute_geodesic_distances(adj, reference_index)
 
-    r = r_geo if use_graph else r_eucl
+    r = cast("np.ndarray", r_geo if use_graph_distances else r_eucl)
 
-    if check_distortion and r_geo is not None:
-        dist_score = compute_local_distortion(r_geo, r_eucl, r_min, r_max)
-        if np.isnan(dist_score):
-            print("Warning: Insufficient cells for distortion check.")
-        elif dist_score < 0.5:
-            print(
-                f"CRITICAL WARNING: Local distortion score is low ({dist_score:.2f})."
-            )
-            print(
-                "The embedding may not preserve angular relationships around this vantage point."
-            )
-            print("Results should be interpreted with extreme caution.")
+    if check_spatial_distortion and r_geo is not None:
+        r_min_dist = np.quantile(r_eucl, 0.1)
+        r_max_dist = np.quantile(r_eucl, 0.9)
 
-    grid_points: np.ndarray[tuple[Any, ...], np.dtype[np.float64]] = (
-        define_angular_grid(delta_phi_deg)
+        dist_score = compute_local_distortion(r_geo, r_eucl, r_min_dist, r_max_dist)
+        validate_embedding_distortion(
+            dist_score,
+            min_correlation=min_distortion_correlation,
+        )
+
+        provenance["distortion_score"] = dist_score
+
+    r_min = np.quantile(r, inner_radius_percentile)
+    r_max = np.quantile(r, outer_radius_percentile)
+
+    annulus_mask = (r >= r_min) & (r < r_max)
+    n_annulus = annulus_mask.sum()
+
+    validate_annulus_cells(n_annulus, min_annulus=min_cells_in_analysis_region)
+
+    provenance["r_min"] = r_min
+    provenance["r_max"] = r_max
+    provenance["r_min_quantile"] = inner_radius_percentile
+    provenance["r_max_quantile"] = outer_radius_percentile
+    provenance["n_annulus"] = n_annulus
+
+    grid_points = define_angular_grid(angle_resolution_degrees)
+    bin_map = bin_cells_sparse(theta, grid_points, r=r, r_min=r_min, r_max=r_max)
+    bg_weights = np.ones(len(r))
+
+    provenance["n_angular_bins"] = len(grid_points)
+    provenance["delta_phi_deg"] = angle_resolution_degrees
+    provenance["window_width_deg"] = smoothing_window_degrees
+
+    covariates = build_covariate_matrix(
+        subset_data,
+        keys=confounding_factors,
+        include_log_depth=True,
     )
-    bg_weights: np.ndarray[tuple[int], np.dtype[np.float64]] = np.ones(len(r))
 
-    stratify_by = None
-    if stratify_key is not None:
-        if stratify_key not in adata.obs:
-            raise ValueError(f"Stratification key {stratify_key} not found.")
-        stratify_by = adata.obs[stratify_key].values
+    provenance["covariate_keys"] = confounding_factors
+    provenance["covariate_dim"] = covariates.shape[1] if covariates is not None else 0
+
+    logger.info(
+        "Building %s gene-independent permutation indices using '%s' engine...",
+        num_permutations,
+        permutation_method,
+    )
+
+    if permutation_method == "stratified":
+        if stratification_column is not None:
+            if stratification_column not in subset_data.obs:
+                raise ValueError(
+                    f"Stratify key '{stratification_column}' not in subset_data.obs",
+                )
+            strata = subset_data.obs[stratification_column].astype(str).to_numpy()
+        else:
+            strata_cols = []
+            for key in confounding_factors or []:
+                if key in subset_data.obs:
+                    if subset_data.obs[key].dtype.name in ["category", "object"]:
+                        strata_cols.append(subset_data.obs[key].astype(str))
+
+            if len(strata_cols) == 0:
+                raise ValueError(
+                    "No discrete covariates found for stratified CRT. "
+                    "Provide stratification_column or use permutation_method='knn'.",
+                )
+
+            strata = pd.DataFrame(strata_cols).T.agg("_".join, axis=1).to_numpy()
+
+        validate_strata_sizes(strata, min_stratum_size=min_group_size)
+
+        perm_indices, strata_info = _build_permutation_indices_stratified(
+            strata,
+            num_permutations,
+            min_stratum_size=min_group_size,
+            seed=random_seed,
+        )
+
+        provenance["crt_strata_info"] = strata_info
+
+    elif permutation_method == "knn":
+        if covariates is None:
+            raise ValueError("kNN CRT requires covariates")
+
+        perm_indices, knn_info = _build_permutation_indices_knn(
+            covariates,
+            num_permutations,
+            k=neighbors_for_matching,
+            stratify_by=(
+                subset_data.obs[stratification_column].to_numpy()
+                if stratification_column
+                else None
+            ),
+            min_stratum_size=min_group_size,
+            seed=random_seed,
+        )
+
+        provenance["crt_knn_info"] = knn_info
+
+    else:
+        raise ValueError(
+            (
+                f"Unknown permutation_method: {permutation_method}. "
+                "Use 'stratified' or 'knn'."
+            )
+        )
+
+    logger.info("Permutation indices built: shape %s", perm_indices.shape)
 
     results_list = []
-    rsp_curves = {}
+    rsp_curves_dict = {}
 
-
-    for gene in tqdm(genes, desc="Scanning genes"):
+    for gene in tqdm(genes_to_test, desc="Scanning genes"):
         try:
-            weights = compute_gene_weights(adata, gene, method=method, q=q, layer=layer)
+            weights = compute_gene_weights(
+                subset_data,
+                gene,
+                method=expression_method,
+                q=expression_threshold_percentile,
+                layer=expression_layer,
+            )
 
-            res = compute_rsp_curve(
+            validate_effective_mass(
+                weights,
+                min_effective_mass=min_expression_mass,
+                gene_name=gene,
+            )
+
+            perm_res = run_conditional_permutation(
                 theta,
                 r,
                 weights,
                 bg_weights,
                 grid_points,
-                window_width_deg,
+                smoothing_window_degrees,
                 r_min,
                 r_max,
+                perm_indices=perm_indices,
+                bin_map=bin_map,
             )
-
-            d_dir, theta_dir = compute_directional_deviance(
-                res["p_F"], res["p_B"], grid_points
-            )
-
-            a1 = compute_a1(res["p_F"], res["p_B"])
-            a2, theta_hat, _ = compute_a2(res["p_F"], grid_points)
 
             row = {
                 "gene": gene,
-                "D_dir": d_dir,
-                "theta_dir": theta_dir,
-                "A1": a1,
-                "A2": a2,
-                "theta_hat": theta_hat,
-                "N_F": res["N_F"],
+                "ARIA": perm_res["w1_obs"],
+                "Z_W1": perm_res["Z_w1"],
+                "D_dir": perm_res["d_dir_obs"],
+                "theta_dir": perm_res["theta_dir_obs"],
+                "p_CRA": perm_res["p_w1"],
+                "p_D_dir": perm_res["p_d_dir"],
+                "N_F": np.sum(weights[annulus_mask]),
+                "null_mean_W1": perm_res["null_mean_w1"],
+                "null_std_W1": perm_res["null_std_w1"],
             }
 
-            if n_perm > 0:
-                perm_res = run_stratified_permutation(
-                    theta,
-                    r,
-                    weights,
-                    bg_weights,
-                    grid_points,
-                    window_width_deg,
-                    r_min,
-                    r_max,
-                    stratify_by=stratify_by,
-                    n_perm=n_perm,
-                )
-                row["p_value"] = perm_res["p_value"]
-                row["D_dir_null_mean"] = np.mean(perm_res["null_d_dir"])
-
             results_list.append(row)
-            rsp_curves[gene] = res["rsp"]
+            rsp_curves_dict[gene] = perm_res["rsp_obs"]
 
-        except Exception as e:
-            print(f"Error processing {gene}: {e}")
+        except BioRSPValidationError as e:
+            warnings.warn(f"Gene {gene} failed validation: {e}")
+            continue
+        except (ValueError, KeyError) as exc:
+            logger.exception("Error processing gene %s", gene)
+            warnings.warn(f"Error processing gene {gene}: {exc}")
+            continue
+
+    if len(results_list) == 0:
+        raise ValueError(
+            "No genes passed validation. Check expression levels and filters.",
+        )
 
     df_results = pd.DataFrame(results_list).set_index("gene")
 
-    new_cols = df_results.columns
-    for col in new_cols:
-        adata.var[col] = df_results[col]
+    _, qvalues = compute_fdr_bh(
+        df_results["p_CRA"].to_numpy(),
+        alpha=significance_threshold,
+    )
+    df_results["q_CRA"] = qvalues
+    df_results["discovery"] = qvalues < significance_threshold
 
-    if "biorsp" not in adata.uns:
-        adata.uns["biorsp"] = {}
+    provenance["n_genes_tested"] = len(df_results)
+    provenance["n_discoveries"] = df_results["discovery"].sum()
+    provenance["fdr_alpha"] = significance_threshold
 
-    adata.uns["biorsp"]["rsp_curves"] = pd.DataFrame(rsp_curves, index=grid_points)
-    adata.uns["biorsp"]["params"] = {
-        "vantage_point": vantage_point,
-        "embedding_key": embedding_key,
-        "use_graph": use_graph,
-        "window_width_deg": window_width_deg,
-        "delta_phi_deg": delta_phi_deg,
-        "stratify_key": stratify_key,
-    }
+    for col in df_results.columns:
+        spatial_data.var.loc[df_results.index, f"biorsp_{col}"] = df_results[col]
+
+    if "biorsp" not in spatial_data.uns:
+        spatial_data.uns["biorsp"] = {}
+
+    spatial_data.uns["biorsp"]["results"] = df_results
+    spatial_data.uns["biorsp"]["provenance"] = provenance
+    spatial_data.uns["biorsp"]["perm_indices_shape"] = perm_indices.shape
+
+    if rsp_curves_dict:
+        spatial_data.uns["biorsp"]["rsp_curves"] = pd.DataFrame(
+            rsp_curves_dict, index=grid_points
+        )
+
+    logger.info(
+        "BioRSP complete: Tested genes=%s; Discoveries (q<%s)=%s",
+        len(df_results),
+        significance_threshold,
+        df_results["discovery"].sum(),
+    )
+    logging.info(
+        "Results stored in spatial_data.var['biorsp_*'] and spatial_data.uns['biorsp']",
+    )
 
     return df_results
 
 
-def compute_rsp(adata, gene, vantage_point, **kwargs):
-    """
-    Wrapper for single gene.
-    """
-    res: pd.DataFrame = scan_genes(adata, [gene], vantage_point, **kwargs)
-    return res.loc[gene]
+def analyze_single_gene(
+    spatial_data: AnnData,
+    gene_name: str,
+    reference_point: Union[int, Sequence[float], np.ndarray],
+    **analysis_settings: Any,
+) -> pd.Series:
+    """Analyze spatial pattern for one gene.
+
+    This is a convenience function for testing individual genes. For analyzing
+    multiple genes, use find_spatially_patterned_genes instead.
+
+    Args:
+        spatial_data: AnnData object containing spatial coordinates and gene expression.
+        gene_name: Name of the gene to analyze.
+        reference_point: Center point coordinates (array) or cell index (integer).
+        **analysis_settings: Additional settings passed to
+            find_spatially_patterned_genes.
+
+    Returns:
+        Analysis results for the single gene as a pandas Series.
+
+    Raises:
+        ValueError: If the gene is not found or analysis fails.
+
+    Examples:
+        result = analyze_single_gene(data, "Gene_X", center_coords)
+        logger.info("Pattern strength: %.3f", result['ARIA'])
+        logger.info("Significant: %s", result['discovery'])"""
+    results: pd.DataFrame = find_spatially_patterned_genes(
+        spatial_data,
+        [gene_name],
+        reference_point,
+        **analysis_settings,
+    )
+    return results.loc[gene_name]

@@ -1,0 +1,28 @@
+[build-system]
+requires = ["setuptools"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "biorsp"
+version = "0.2.0"
+description = "BioRSP: Radar Scanning Plot for single-cell directional gene expression analysis"
+authors = [
+    { name = "Zeyu Yao", email = "novodoodle@gmail.com" },
+    { name = "Jake Y. Chen", email = "jakechen@uab.edu" },
+]
+dependencies = [
+    "numpy",
+    "scipy",
+    "pandas",
+    "matplotlib",
+    "anndata",
+    "scanpy",
+    "scikit-learn",
+    "tqdm",
+]
+requires-python = ">=3.8"
+readme = "README.md"
+license = { file = "LICENSE" }
+
+[tool.setuptools]
+packages = ["biorsp"]

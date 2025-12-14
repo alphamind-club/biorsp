@@ -1,13 +1,34 @@
+"""Interpretation utilities for BioRSP."""
+
+from typing import Optional, Sequence
+
 import numpy as np
 import pandas as pd
+from anndata import AnnData
 
 from .geometry import cartesian_to_polar
 
 
-def get_cell_angles(adata, vantage_point, embedding_key="X_umap"):
-    """
-    Compute angles for all cells relative to vantage point.
-    """
+def get_cell_angles(
+    adata: AnnData,
+    vantage_point: Optional[Sequence[float] | int],
+    embedding_key: str = "X_umap",
+) -> np.ndarray:
+    """Compute angles for all cells relative to a vantage point.
+
+    Parameters
+    ----------
+    adata : AnnData
+        Annotated data object containing spatial embedding in ``.obsm``.
+    vantage_point : int or sequence
+        Index of the vantage cell or coordinates for the vantage.
+    embedding_key : str
+        Key of embedding in ``adata.obsm``.
+
+    Returns
+    -------
+    np.ndarray
+        Angle values in radians for each cell."""
     if isinstance(vantage_point, (int, np.integer)):
         vantage_coords = adata.obsm[embedding_key][vantage_point]
     else:
@@ -18,23 +39,23 @@ def get_cell_angles(adata, vantage_point, embedding_key="X_umap"):
     return theta
 
 
-def identify_peak_sectors(adata, gene, threshold_percentile=80):
-    """
-    Identify angular sectors where the gene is highly enriched.
+def identify_peak_sectors(
+    adata: AnnData,
+    gene: str,
+    threshold_percentile: float = 80.0,
+) -> list:
+    """Identify contiguous angular sectors where ``gene`` is enriched.
 
-    Returns
-    -------
-    sectors : list of tuples (start_angle, end_angle)
-    """
+    Returns a list of ``(start_angle, end_angle)`` tuples in radians."""
     if "biorsp" not in adata.uns or "rsp_curves" not in adata.uns["biorsp"]:
-        raise ValueError("Run scan_genes first.")
+        raise ValueError("Run find_spatially_patterned_genes first.")
 
     rsp_df = adata.uns["biorsp"]["rsp_curves"]
     if gene not in rsp_df.columns:
         raise ValueError(f"Gene {gene} not found in results.")
 
-    angles = rsp_df.index.values
-    values = rsp_df[gene].values
+    angles = rsp_df.index.to_numpy()
+    values = rsp_df[gene].to_numpy()
 
     threshold = np.percentile(values, threshold_percentile)
 
@@ -68,9 +89,7 @@ def identify_peak_sectors(adata, gene, threshold_percentile=80):
 
 
 def correlate_sectors_with_metadata(adata, gene, obs_key, sectors=None):
-    """
-    Check which metadata categories are enriched in the peak sectors.
-    """
+    """Check which metadata categories are enriched in the peak sectors."""
     if sectors is None:
         sectors = identify_peak_sectors(adata, gene)
 
@@ -92,13 +111,11 @@ def correlate_sectors_with_metadata(adata, gene, obs_key, sectors=None):
             mask = (theta >= start) | (theta <= end)
         in_sector |= mask
 
-
     cats = adata.obs[obs_key].unique()
     results = []
 
     for cat in cats:
         is_cat = adata.obs[obs_key] == cat
-
 
         a = np.sum(in_sector & is_cat)
         b = np.sum((~in_sector) & is_cat)
@@ -110,26 +127,22 @@ def correlate_sectors_with_metadata(adata, gene, obs_key, sectors=None):
         else:
             or_val = (a * d) / (b * c)
 
-
         results.append(
             {
                 "category": cat,
                 "count_in_sector": a,
                 "total_count": a + b,
-                "enrichment_ratio": (a / (a + c))
-                / ((a + b) / len(theta)),  # P(Cat|Sector) / P(Cat)
+                "enrichment_ratio": (a / (a + c)) / ((a + b) / len(theta)),
                 "odds_ratio": or_val,
-            }
+            },
         )
 
     return pd.DataFrame(results).sort_values("enrichment_ratio", ascending=False)
 
 
 def check_pathway_enrichment(gene_list, database="GO_Biological_Process_2021"):
-    """
-    Placeholder for pathway enrichment analysis.
-    In a real scenario, this would query Enrichr or use gseapy.
-    """
+    """Placeholder for pathway enrichment analysis.
+    In a real scenario, this would query Enrichr or use gseapy."""
     mock_pathways = [
         "Cell Cycle (GO:0007049)",
         "Mitotic Spindle Organization (GO:0007052)",
@@ -148,20 +161,24 @@ def check_pathway_enrichment(gene_list, database="GO_Biological_Process_2021"):
                 "Term": p,
                 "Adjusted P-value": random.uniform(1e-5, 0.05),
                 "Overlap": f"{random.randint(3, 10)}/{random.randint(50, 200)}",
-            }
+                "Database": database,
+            },
         )
 
     return pd.DataFrame(results)
 
 
 def generate_interpretation_report(adata, genes, obs_keys):
-    """
-    Generate a summary report for a list of genes.
-    """
+    """Generate a summary report for a list of genes."""
     report = []
 
     for gene in genes:
         if gene in adata.var_names:
+            cra = (
+                adata.var.loc[gene, "ARIA"]
+                if "ARIA" in adata.var.columns
+                else np.nan
+            )
             a1 = adata.var.loc[gene, "A1"] if "A1" in adata.var.columns else np.nan
             a2 = adata.var.loc[gene, "A2"] if "A2" in adata.var.columns else np.nan
             theta_hat = (
@@ -177,6 +194,7 @@ def generate_interpretation_report(adata, genes, obs_keys):
 
         row = {
             "gene": gene,
+            "ARIA": cra,
             "A1": a1,
             "A2": a2,
             "theta_hat": theta_hat,
@@ -204,8 +222,7 @@ def generate_interpretation_report(adata, genes, obs_keys):
 
 
 def annotate_direction(adata, angle, obs_key, window_deg=30):
-    """
-    Annotate a specific direction with enriched metadata.
+    """Annotate a specific direction with enriched metadata.
 
     Parameters
     ----------
@@ -221,8 +238,7 @@ def annotate_direction(adata, angle, obs_key, window_deg=30):
     Returns
     -------
     pd.DataFrame
-        Enrichment results for categories in obs_key.
-    """
+        Enrichment results for categories in obs_key."""
     half_width = np.deg2rad(window_deg / 2)
     start = angle - half_width
     end = angle + half_width
@@ -232,8 +248,54 @@ def annotate_direction(adata, angle, obs_key, window_deg=30):
 
     sector = [(start, end)]
 
-
     if "biorsp" not in adata.uns or "params" not in adata.uns["biorsp"]:
-        raise ValueError("Run scan_genes first to set vantage point parameters.")
+        raise ValueError(
+            "Run find_spatially_patterned_genes first to set vantage point parameters.",
+        )
 
     return correlate_sectors_with_metadata(adata, "dummy_gene", obs_key, sectors=sector)
+
+
+def compute_sector_enrichment(adata, gene, obs_keys, sectors=None):
+    """Compute enrichment of metadata categories in peak sectors.
+
+    Returns a dictionary of DataFrames, one for each obs_key."""
+    if isinstance(obs_keys, str):
+        obs_keys = [obs_keys]
+
+    if sectors is None:
+        sectors = identify_peak_sectors(adata, gene)
+
+    results = {}
+    for key in obs_keys:
+        res = correlate_sectors_with_metadata(adata, gene, key, sectors=sectors)
+        if res is not None:
+            results[key] = pd.DataFrame(res)
+
+    return results
+
+
+def run_pathway_enrichment(
+    genes,
+    database="GO_Biological_Process_2021",
+    organism="Human",
+):
+    """Run pathway enrichment analysis using gseapy."""
+    try:
+        import gseapy as gp
+    except ImportError:
+        raise ImportError(
+            "gseapy is required for pathway enrichment. Please install it.",
+        )
+
+    if isinstance(genes, (pd.Series, np.ndarray)):
+        genes = genes.tolist()
+
+    enr = gp.enrichr(
+        gene_list=genes,
+        gene_sets=database,
+        organism=organism,
+        outdir=None,
+    )
+
+    return enr.results

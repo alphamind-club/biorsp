@@ -1,0 +1,42 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  lint_and_type_check:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: 3.13
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e .
+          pip install ruff mypy
+
+      - name: Ruff (lint)
+        run: |
+          python -m ruff check biorsp --select ALL
+
+      - name: Mypy (types)
+        run: |
+          python -m mypy --config-file mypy.ini
+
+      - name: Import test
+        run: |
+          python - <<PY
+          import biorsp
+          print('biorsp version:', getattr(biorsp, '__version__', 'unknown'))
+          print('find_spatially_patterned_genes exists:', hasattr(biorsp, 'find_spatially_patterned_genes'))
+          PY
