@@ -15,9 +15,9 @@ from .api import (
 from .interpretation import generate_interpretation_report, identify_peak_sectors
 from .stability import (
     comprehensive_stability_check,
+    consistency_across_embeddings,
     measure_angular_variation,
-    test_consistency_across_embeddings,
-    test_parameter_robustness,
+    parameter_robustness,
     validate_spatial_representations,
 )
 from .validation import (
@@ -35,14 +35,14 @@ __all__ = [
     "analyze_single_gene",
     "comprehensive_stability_check",
     "compute_fdr_bh",
+    "consistency_across_embeddings",
     "define_reference_point",
     "find_spatially_patterned_genes",
     "generate_interpretation_report",
     "get_code_version",
     "identify_peak_sectors",
     "measure_angular_variation",
-    "test_consistency_across_embeddings",
-    "test_parameter_robustness",
+    "parameter_robustness",
     "validate_covariates",
     "validate_effective_mass",
     "validate_minimum_cells",

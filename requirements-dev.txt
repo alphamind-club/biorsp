@@ -1,4 +1,5 @@
-ruff
-mypy
-matplotlib-venn
-upsetplot
+ruff>=0.6.0
+mypy>=1.11.0
+pytest>=8.0.0
+matplotlib-venn>=1.1.0
+upsetplot>=0.9.0
