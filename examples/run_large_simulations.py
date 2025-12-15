@@ -40,7 +40,6 @@ def compute_morans_i_pvalues_local(adata, genes, n_perms=100, k=30, seed=None):
         null_stats = []
         for _ in range(n_perms):
             perm = rng.permutation(expr)
-            # plug permuted vector into a copy of adata and compute morans
             adata_perm = adata.copy()
             adata_perm.X = adata_perm.X.copy()
             if hasattr(adata_perm.X, "toarray"):
@@ -67,14 +66,15 @@ def run_large_suite(sizes=(5000, 10000), seeds=range(10), n_genes=50, n_perms=10
             rng = np.random.default_rng(int(seed))
             print(f"Running n_cells={n_cells}, seed={seed}")
 
-            adata = create_synthetic_dataset(n_cells=n_cells, manifold="circle", n_genes=n_genes, rng=rng)
-
-            # Use raw counts and global permutation (dummy strata) to match original generative model
+            adata = create_synthetic_dataset(
+                n_cells=n_cells, manifold="circle", n_genes=n_genes, rng=rng
+            )
             adata.obs["dummy_strata"] = "all"
 
-            vantage = define_reference_point(adata, coordinate_system="X_umap", method="geometric_median")
+            vantage = define_reference_point(
+                adata, coordinate_system="X_umap", method="geometric_median"
+            )
 
-            # Run BioRSP (fastish: few permutations)
             t0 = time.time()
             res_df = find_spatially_patterned_genes(
                 adata,
@@ -91,28 +91,24 @@ def run_large_suite(sizes=(5000, 10000), seeds=range(10), n_genes=50, n_perms=10
             )
             t1 = time.time()
 
-            # Compute BioRSP metrics
             alpha = 0.05
             signal_genes = [f"Gene_{i}" for i in range(5)]
             null_genes = [f"Gene_{i}" for i in range(10, n_genes)]
 
             power_biorsp = np.mean(res_df.loc[signal_genes, "p_D_dir"] < alpha)
             type1_biorsp = np.mean(res_df.loc[null_genes, "p_D_dir"] < alpha)
-
-            # Compute Moran's I (statistic) using our baseline implementation
             morans_stats = compute_morans_i(adata, genes=list(adata.var_names))
 
-            # Permutation p-values for our Moran's I (same engine)
-            morans_pvals = compute_morans_i_pvalues_local(adata, genes=list(adata.var_names), n_perms=n_perms, seed=seed)
+            morans_pvals = compute_morans_i_pvalues_local(
+                adata, genes=list(adata.var_names), n_perms=n_perms, seed=seed
+            )
             power_morans = np.mean(morans_pvals.loc[signal_genes] < alpha)
             type1_morans = np.mean(morans_pvals.loc[null_genes] < alpha)
 
-            # Cross-validate: compute Scanpy's Moran's I statistic (should match baseline)
             try:
                 sc_morans = sc.metrics.morans_i(adata)
                 if isinstance(sc_morans, (list, np.ndarray)):
                     sc_morans = pd.Series(sc_morans, index=adata.var_names)
-                # Re-use permutation p-values from our permutation engine for fairness
                 power_scanpy = np.mean(morans_pvals.loc[signal_genes] < alpha)
                 type1_scanpy = np.mean(morans_pvals.loc[null_genes] < alpha)
             except Exception:
@@ -134,7 +130,6 @@ def run_large_suite(sizes=(5000, 10000), seeds=range(10), n_genes=50, n_perms=10
                 }
             )
 
-            # quick flush to disk
             df = pd.DataFrame(rows)
             out = os.path.join("examples", "large_simulation_results.csv")
             df.to_csv(out, index=False)
@@ -145,4 +140,8 @@ def run_large_suite(sizes=(5000, 10000), seeds=range(10), n_genes=50, n_perms=10
 if __name__ == "__main__":
     df = run_large_suite(sizes=(5000, 10000), seeds=range(10), n_genes=50, n_perms=100)
     print("Finished. Results saved to examples/large_simulation_results.csv")
-    print(df.groupby("n_cells").agg({"type1_biorsp":"mean","type1_morans":"mean","type1_scanpy":"mean"}))
+    print(
+        df.groupby("n_cells").agg(
+            {"type1_biorsp": "mean", "type1_morans": "mean", "type1_scanpy": "mean"}
+        )
+    )

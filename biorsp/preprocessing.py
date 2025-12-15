@@ -159,11 +159,9 @@ def compute_gene_weights(
 
         mu = n_counts * p_j
         sigma = np.sqrt(mu)
-        # Avoid division by zero
         sigma[sigma == 0] = 1.0
 
         residuals = (expr - mu) / sigma
-        # Clip negative residuals to focus on enrichment
         weights = np.clip(residuals, 0, None)
 
         max_val = np.max(weights)

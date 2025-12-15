@@ -236,12 +236,18 @@ def find_spatially_patterned_genes(
     stability_threshold_fraction: float = 0.05,
     significance_threshold: float = 0.05,
     random_seed: int = 0,
+    n_jobs: int = 1,
 ) -> pd.DataFrame:
     """Find genes that show spatial patterns radiating from a center point.
 
     This is the main function for discovering genes with radial spatial patterns.
     It uses advanced statistical methods to account for technical biases and
     provides reliable results for scientific publications.
+
+    Complexity:
+        Time: O(N * G * P) where N is number of cells, G is number of genes,
+              and P is number of permutations.
+        Space: O(N * P) for storing permutation indices.
 
     Args:
         spatial_data: AnnData object containing spatial coordinates and
@@ -622,11 +628,24 @@ def find_spatially_patterned_genes(
     results_list = []
     rsp_curves_dict = {}
 
-    for gene in tqdm(genes_to_test, desc="Scanning genes"):
-        row, rsp_curve = _process_single_gene(gene)
-        if row is not None:
-            results_list.append(row)
-            rsp_curves_dict[gene] = rsp_curve
+    from joblib import Parallel, delayed
+
+    if n_jobs == 1:
+        for gene in tqdm(genes_to_test, desc="Scanning genes"):
+            row, rsp_curve = _process_single_gene(gene)
+            if row is not None:
+                results_list.append(row)
+                rsp_curves_dict[gene] = rsp_curve
+    else:
+        logger.info("Running parallel analysis with %d jobs", n_jobs)
+        parallel_results = Parallel(n_jobs=n_jobs)(
+            delayed(_process_single_gene)(gene)
+            for gene in tqdm(genes_to_test, desc="Scanning genes")
+        )
+        for row, rsp_curve in parallel_results:
+            if row is not None:
+                results_list.append(row)
+                rsp_curves_dict[row["gene"]] = rsp_curve
 
     if len(results_list) == 0:
         msg = "No genes passed validation. Check expression levels and filters."
