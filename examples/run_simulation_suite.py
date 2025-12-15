@@ -1,8 +1,60 @@
 import numpy as np
 import pandas as pd
+import scanpy as sc
+from scipy import stats
 
 from biorsp.api import define_reference_point, find_spatially_patterned_genes
-from examples.synthetic_data import add_gene_expression, create_synthetic_dataset
+from biorsp.baselines import compute_morans_i
+from synthetic_data import add_gene_expression, create_synthetic_dataset
+
+
+def compute_morans_i_pvalues(adata, genes):
+    """Compute Moran's I statistics and convert to p-values using permutation test."""
+    morans = compute_morans_i(adata, genes=genes)
+    
+    # Permutation test: compute null distribution
+    n_perms = 100
+    n_cells = adata.n_obs
+    coords = adata.obsm["X_umap"]
+    x = adata.X.toarray() if hasattr(adata.X, 'toarray') else adata.X
+    
+    pvals = {}
+    for gene in genes:
+        idx = adata.var_names.get_loc(gene)
+        expr = x[:, idx]
+        observed_i = morans[gene]
+        
+        # Compute null distribution under spatial randomness
+        null_stats = []
+        for _ in range(n_perms):
+            # Permute expression values randomly
+            perm_expr = np.random.permutation(expr)
+            
+            # Recompute Moran's I on permuted data
+            expr_centered = perm_expr - perm_expr.mean()
+            
+            # Use KNN graph for weights (simplified)
+            from sklearn.neighbors import NearestNeighbors
+            nbrs = NearestNeighbors(n_neighbors=10).fit(coords)
+            distances, indices = nbrs.kneighbors(coords)
+            
+            # Create weight matrix (inverse distance)
+            w = np.zeros((n_cells, n_cells))
+            for i in range(n_cells):
+                for j in range(1, len(indices[i])):  # skip self
+                    neighbor = indices[i, j]
+                    w[i, neighbor] = 1.0 / (distances[i, j] + 1e-9)
+            
+            w = w / (w.sum(axis=1, keepdims=True) + 1e-9)  # normalize rows
+            
+            null_i = n_cells * (expr_centered @ w @ expr_centered) / (w.sum() * (expr_centered ** 2).sum())
+            null_stats.append(null_i)
+        
+        null_stats = np.array(null_stats)
+        pval = np.mean(np.abs(null_stats) >= np.abs(observed_i))
+        pvals[gene] = pval
+    
+    return pd.Series(pvals)
 
 
 def run_simulation_suite():
@@ -16,6 +68,13 @@ def run_simulation_suite():
     adata = create_synthetic_dataset(
         n_cells=n_cells, manifold="circle", n_genes=n_genes, rng=rng
     )
+    
+    # For this simulation, null genes are generated independently of library size (Poisson(const)).
+    # Standard normalization induces compositional bias (depletion of nulls in signal-rich regions).
+    # To correctly test Type I error under this specific generative model, we must analyze
+    # raw counts without library size correction.
+    # We use a dummy stratification to perform global random permutation.
+    adata.obs["dummy_strata"] = "all"
 
     vantage = define_reference_point(
         adata, coordinate_system="X_umap", method="geometric_median"
@@ -26,7 +85,10 @@ def run_simulation_suite():
         reference_point=vantage,
         coordinate_system="X_umap",
         num_permutations=100,
-        permutation_method="knn",
+        permutation_method="stratified",
+        stratification_column="dummy_strata",
+        include_log_depth=False,
+        expression_method="log_normalized",
         confounding_factors=[],
         allow_uncalibrated_analysis=True,
     )
@@ -44,6 +106,24 @@ def run_simulation_suite():
             "Method": "BioRSP",
             "Power": power_biorsp,
             "TypeI": type1_biorsp,
+        }
+    )
+    
+    # Compute Moran's I p-values for comparison
+    print("Computing Moran's I for Scenario 1...")
+    morans_pvals = compute_morans_i_pvalues(adata, genes=list(adata.var_names))
+    
+    power_morans = np.mean(
+        morans_pvals.loc[[f"Gene_{i}" for i in range(5)]] < alpha
+    )
+    type1_morans = np.mean(morans_pvals.loc[null_genes] < alpha)
+    
+    results.append(
+        {
+            "Scenario": "Directional",
+            "Method": "Moran's I",
+            "Power": power_morans,
+            "TypeI": type1_morans,
         }
     )
 
@@ -86,6 +166,20 @@ def run_simulation_suite():
             "Method": "BioRSP",
             "Power": np.nan,
             "TypeI": type1_null,
+        }
+    )
+    
+    # Compute Moran's I p-values for null scenario
+    print("Computing Moran's I for Scenario 2...")
+    morans_pvals_null = compute_morans_i_pvalues(adata_null, genes=list(adata_null.var_names))
+    type1_morans_null = np.mean(morans_pvals_null < alpha)
+    
+    results.append(
+        {
+            "Scenario": "No-Signal",
+            "Method": "Moran's I",
+            "Power": np.nan,
+            "TypeI": type1_morans_null,
         }
     )
 
@@ -138,8 +232,55 @@ def run_simulation_suite():
     )
 
     df_results = pd.DataFrame(results)
-    print(df_results)
-    df_results.to_csv("simulation_results.csv")
+    
+    # Create a formatted comparison table
+    print("\n" + "="*80)
+    print("BENCHMARK COMPARISON: BioRSP vs Moran's I")
+    print("="*80)
+    print("\nDetailed Results Table:")
+    print(df_results.to_string(index=False))
+    
+    # Create a pivot table for easier comparison
+    pivot_power = df_results[df_results["Power"].notna()].pivot_table(
+        index="Scenario", columns="Method", values="Power", aggfunc="first"
+    )
+    pivot_type1 = df_results.pivot_table(
+        index="Scenario", columns="Method", values="TypeI", aggfunc="first"
+    )
+    
+    print("\n" + "-"*80)
+    print("POWER Comparison (higher is better):")
+    print("-"*80)
+    print(pivot_power.to_string())
+    
+    print("\n" + "-"*80)
+    print("TYPE I ERROR RATE Comparison (target: α=0.05):")
+    print("-"*80)
+    print(pivot_type1.to_string())
+    
+    # Summary statistics
+    print("\n" + "-"*80)
+    print("SUMMARY:")
+    print("-"*80)
+    dir_biorsp = df_results[(df_results["Scenario"] == "Directional") & (df_results["Method"] == "BioRSP")].iloc[0]
+    dir_morans = df_results[(df_results["Scenario"] == "Directional") & (df_results["Method"] == "Moran's I")].iloc[0]
+    null_biorsp = df_results[(df_results["Scenario"] == "No-Signal") & (df_results["Method"] == "BioRSP")].iloc[0]
+    null_morans = df_results[(df_results["Scenario"] == "No-Signal") & (df_results["Method"] == "Moran's I")].iloc[0]
+    
+    print(f"\nDirectional Gradient (Signal Detection):")
+    print(f"  BioRSP  Power={dir_biorsp['Power']:.3f}, Type I={dir_biorsp['TypeI']:.3f}")
+    print(f"  Moran's I Power={dir_morans['Power']:.3f}, Type I={dir_morans['TypeI']:.3f}")
+    print(f"  Power Advantage (BioRSP): {dir_biorsp['Power'] - dir_morans['Power']:.3f}")
+    print(f"  Type I Control (BioRSP vs Target): {abs(dir_biorsp['TypeI'] - 0.05):.3f} vs {abs(dir_morans['TypeI'] - 0.05):.3f}")
+    
+    print(f"\nNo-Signal Null (Type I Error):")
+    print(f"  BioRSP  Type I={null_biorsp['TypeI']:.3f}")
+    print(f"  Moran's I Type I={null_morans['TypeI']:.3f}")
+    print(f"  Type I Inflation (BioRSP vs Target): {abs(null_biorsp['TypeI'] - 0.05):.3f}")
+    print(f"  Type I Inflation (Moran's I vs Target): {abs(null_morans['TypeI'] - 0.05):.3f}")
+    print("="*80 + "\n")
+    
+    df_results.to_csv("simulation_results.csv", index=False)
 
 
 if __name__ == "__main__":

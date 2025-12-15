@@ -223,6 +223,7 @@ def find_spatially_patterned_genes(
     num_permutations: int = 500,
     permutation_method: str = "stratified",
     stratification_column: str | None = None,
+    include_log_depth: bool = True,
     neighbors_for_matching: int = 30,
     min_group_size: int = 20,
     min_cells_required: int = 200,
@@ -482,7 +483,7 @@ def find_spatially_patterned_genes(
     covariates = build_covariate_matrix(
         subset_data,
         keys=confounding_factors,
-        include_log_depth=True,
+        include_log_depth=include_log_depth,
     )
 
     provenance["covariate_keys"] = confounding_factors

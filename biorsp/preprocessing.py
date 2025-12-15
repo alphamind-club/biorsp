@@ -140,6 +140,36 @@ def compute_gene_weights(
             warnings.warn(msg, UserWarning, stacklevel=2)
             weights = np.clip(expr / np.max(expr), 0, 1)
 
+    elif method == "pearson_residuals":
+        if "n_counts" in adata.obs:
+            n_counts = adata.obs["n_counts"].to_numpy()
+        else:
+            X = adata.X
+            if issparse(X):
+                n_counts = X.sum(axis=1).A1
+            else:
+                n_counts = np.sum(X, axis=1)
+
+        total_count = np.sum(n_counts)
+        if total_count == 0:
+            return np.zeros_like(expr)
+
+        gene_total = np.sum(expr)
+        p_j = gene_total / total_count
+
+        mu = n_counts * p_j
+        sigma = np.sqrt(mu)
+        # Avoid division by zero
+        sigma[sigma == 0] = 1.0
+
+        residuals = (expr - mu) / sigma
+        # Clip negative residuals to focus on enrichment
+        weights = np.clip(residuals, 0, None)
+
+        max_val = np.max(weights)
+        if max_val > 0:
+            weights = weights / max_val
+
     else:
         msg = f"Unknown method: {method}"
         raise ValueError(msg)

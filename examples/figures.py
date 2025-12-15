@@ -81,7 +81,6 @@ def make_metric_matrix(
         if metric in df.columns:
             series = df[metric].rename(cond)
             frames[cond] = series
-            # collect mapping from ensg -> feature name
             if "gene" in df.columns:
                 gene_map.update(df["gene"].to_dict())
     if not frames:

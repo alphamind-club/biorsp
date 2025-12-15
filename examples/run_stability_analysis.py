@@ -13,9 +13,9 @@ def run_stability_analysis():
 
     genes = ["Gene_0", "Gene_1", "Gene_10"]
 
-    from biorsp.stability import test_consistency_across_embeddings
+    from biorsp.stability import consistency_across_embeddings
 
-    test_consistency_across_embeddings(
+    consistency_across_embeddings(
         adata,
         genes_to_test=genes,
         coordinate_systems=["X_umap", "X_pca"],

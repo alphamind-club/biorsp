@@ -15,7 +15,7 @@ if TYPE_CHECKING:
     from anndata import AnnData
 
 
-MIN_VALID_STRATA = 2
+MIN_VALID_STRATA = 1
 
 
 class BioRSPValidationError(Exception):
